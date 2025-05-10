@@ -32,8 +32,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
+      - name: Verify lambda.zip exists
+        run: |
+          if [ ! -f lambda.zip ]; then echo "lambda.zip does not exist"; exit 1; fi
+
       - name: Deploy to AWS Lambda
         run: |
           aws lambda update-function-code \
             --function-name cv-processor \
-            --zip-file fileb://lambda.zip
+            --zip-file fileb://$(pwd)/lambda.zip
