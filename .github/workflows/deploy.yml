@@ -23,12 +23,7 @@ jobs:
           cd lambda/cv_processor
           pip install -r requirements.txt -t python
           cp handler.py python/
-          cd ../../
-          zip -r ../../../lambda.zip .
-          echo "Current directory after zipping:"
-          pwd
-          echo "Contents of repository root (expected zip location):"
-          ls -l ../../.. | grep lambda.zip || echo "lambda.zip not found in root!"
+          cd python && zip -r ../lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
