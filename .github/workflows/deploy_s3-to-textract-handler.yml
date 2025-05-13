@@ -23,7 +23,7 @@ jobs:
 
       - name: Install dependencies and package Lambda for s3_to_textract_handler
         run: |
-          cd lambda/s3_to_textract_handler
+          cd lambda/s3_to_textract
           pip install -r requirements.txt -t python
           cp s3-to-textract_handler.py python/
           cd python
