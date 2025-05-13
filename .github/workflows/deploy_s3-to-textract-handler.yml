@@ -48,5 +48,5 @@ jobs:
       - name: Deploy s3_to_textract_handler to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name s3-to-textract-handler \
+            --function-name s3_to_textract_handler \
             --zip-file fileb://$(pwd)/s3-to-textract_handler_lambda.zip
