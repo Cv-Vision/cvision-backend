@@ -8,13 +8,13 @@ model = genai.GenerativeModel("gemini-2.0-flash")
 
 def lambda_handler(event, context):
     try:
-        body = json.loads(event.get("body", "{}"))
-        text = body.get("text", "")
-
-        prompt = f"Extraé los datos clave de este CV: \n{text}"
-        response = model.generate_content(prompt)
-
+        text = event.get("text", "")
+        if not text:
+            raise ValueError("No text provided in the event.")
         print(f"Text received (cut): {text[:300]}")
+
+        prompt = f"Por favor, extrae la siguiente información clave del CV: \n\nNombre, Email, Teléfono, Ubicación, LinkedIn, Experiencia Laboral, Educación, Habilidades Técnicas, Certificaciones, Idiomas.\n\nAquí está el CV:\n\n{text}"
+        response = model.generate_content(prompt)
         print(f"Gemini's response: {response.text}")
 
         return {
