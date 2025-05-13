@@ -4,7 +4,7 @@ import google.generativeai as genai
 
 # Set up Gemini API
 genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 def lambda_handler(event, context):
     try:
@@ -13,6 +13,9 @@ def lambda_handler(event, context):
 
         prompt = f"Extraé los datos clave de este CV: \n{text}"
         response = model.generate_content(prompt)
+
+        print(f"Text received (cut): {text[:300]}")
+        print(f"Gemini's response: {response.text}")
 
         return {
             "statusCode": 200,

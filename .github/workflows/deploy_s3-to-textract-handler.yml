@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda
+name: Deploy to AWS Lambda - s3_to_textract_handler
 
 on:
   push:
@@ -21,13 +21,13 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda
+      - name: Install dependencies and package Lambda for s3_to_textract_handler
         run: |
-          cd lambda/cv_processor
+          cd lambda/s3_to_textract_handler
           pip install -r requirements.txt -t python
-          cp handler.py python/
+          cp s3-to-textract_handler.py python/
           cd python
-          zip -r ../../../lambda.zip .
+          zip -r ../../../s3-to-textract_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -41,12 +41,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify lambda.zip exists
+      - name: Verify s3_to_textract_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/lambda.zip ]; then echo "lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/s3-to-textract_handler_lambda.zip ]; then echo "s3-to-textract_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy to AWS Lambda
+      - name: Deploy s3_to_textract_handler to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name cv-processor \
-            --zip-file fileb://$(pwd)/lambda.zip
+            --function-name s3-to-textract-handler \
+            --zip-file fileb://$(pwd)/s3_to_textract_handler_lambda.zip
