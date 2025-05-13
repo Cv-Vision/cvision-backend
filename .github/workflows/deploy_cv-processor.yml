@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda
+name: Deploy to AWS Lambda - cv-processor
 
 on:
   push:
@@ -21,13 +21,13 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda
+      - name: Install dependencies and package Lambda for cv-processor
         run: |
           cd lambda/cv_processor
           pip install -r requirements.txt -t python
-          cp handler.py python/
+          cp cv-processor_handler.py python/
           cd python
-          zip -r ../../../lambda.zip .
+          zip -r ../../../cv-processor_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -41,12 +41,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify lambda.zip exists
+      - name: Verify cv-processor_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/lambda.zip ]; then echo "lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/cv-processor_handler_lambda.zip ]; then echo "cv-processor_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy to AWS Lambda
+      - name: Deploy cv-processor to AWS Lambda
         run: |
           aws lambda update-function-code \
             --function-name cv-processor \
-            --zip-file fileb://$(pwd)/lambda.zip
+            --zip-file fileb://$(pwd)/cv-processor_handler_lambda.zip
