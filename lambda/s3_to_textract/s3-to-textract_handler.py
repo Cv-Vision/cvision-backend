@@ -65,7 +65,14 @@ def lambda_handler(event, context):
 
         # Call the Lambda function cv_processor with the extracted text
         payload = {
-            'text': extracted_text
+            'text': extracted_text,
+            'job_description': {
+                'title': 'Senior Backend Developer',
+                'description': 'Looking for an experienced backend developer with strong knowledge of Kotlin and distributed systems.',
+                'location': 'Remote',
+                'level': 'Senior',
+                'skills': ['Kotlin', 'Spring Boot', 'PostgreSQL', 'Docker', 'CI/CD']
+            }
         }
         print(f"Invoking cv-processor Lambda with payload: {payload}")
 
