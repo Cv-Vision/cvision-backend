@@ -1,0 +1,12 @@
+services:
+  cv_processor_deps:
+    build:
+      context: .
+      dockerfile: lambda/cv_processor/Dockerfile
+    container_name: cv_processor_deps_builder
+
+  s3_to_textract_deps:
+    build:
+      context: .
+      dockerfile: lambda/s3_to_textract/Dockerfile
+    container_name: s3_to_textract_deps_builder
