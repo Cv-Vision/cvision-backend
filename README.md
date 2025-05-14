@@ -41,7 +41,7 @@ El despliegue se realiza automáticamente mediante GitHub Actions (`.github/work
 - Acceso a:
   - Amazon S3
   - Amazon Textract
-  - Amazon Bedrock (con acceso a Gemini y Titan)
+  - API del LLM con su respectiva key
   - DynamoDB
   - API Gateway (para exponer `cv_processor`, opcional)
 
