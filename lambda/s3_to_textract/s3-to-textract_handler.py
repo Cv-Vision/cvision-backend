@@ -3,6 +3,7 @@ import boto3
 import os
 import mimetypes
 import time
+import urllib.parse
 
 # S3 client and Textract
 s3_client = boto3.client('s3')
@@ -17,7 +18,8 @@ def lambda_handler(event, context):
     try:
         # Extracts bucket name and file name from the S3 event
         bucket_name = event['Records'][0]['s3']['bucket']['name']
-        file_name = event['Records'][0]['s3']['object']['key']
+        raw_key = event['Records'][0]['s3']['object']['key']
+        file_name = urllib.parse.unquote_plus(raw_key)
         print(f"Bucket: {bucket_name}, File: {file_name}")
 
         # Check the file type
