@@ -47,12 +47,6 @@ El despliegue se realiza automáticamente mediante GitHub Actions (`.github/work
 
 ---
 
-## Pruebas
-
-Podés usar `scripts/local_test.py` o Postman para enviar eventos simulados de forma local o manual.
-
----
-
 ## ✍Contribución
 
 Este proyecto es parte de la plataforma **CVision**. Si necesitás agregar una nueva función Lambda:
