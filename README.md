@@ -1,57 +1,85 @@
-Este repositorio contiene las funciones **AWS Lambda** utilizadas por la plataforma **CVision** para el análisis automatizado de CVs y su integración con servicios como **Textract**, y **DynamoDB**.
+# CVision Backend
 
+This repository contains the AWS Lambda functions used by the CVision platform for automated CV analysis and integration with services like Textract and DynamoDB.
 
 ---
 
-## Funciones Lambda
+## 🧠 Lambda Functions
 
 ### `s3_to_textract_handler`
 
-- **Trigger**: Evento de `ObjectCreated` en un bucket de S3 (cuando se sube un CV).
-- **Responsabilidad**: Llamar a Textract para extraer el texto del PDF.
-- **Output**: Invoca programáticamente a `cv_processor` con el texto extraído.
+- **Trigger**: S3 `ObjectCreated` event (when a CV is uploaded).
+- **Responsibility**: Calls Textract to extract text from the PDF.
+- **Output**: Invokes `cv_processor` Lambda with the extracted text.
 
 ### `cv_processor`
 
-- **Trigger**: Llamado por la Lambda anterior (o directamente mediante API Gateway).
-- **Responsabilidad**:
-  - Procesar el texto con una API LLM para extraer campos clave.
-  - Calcular similitud entre CV y Job Description.
-  - Guardar el resultado estructurado en DynamoDB.
+- **Trigger**: Invoked by `s3_to_textract_handler` or directly via API Gateway.
+- **Responsibilities**:
+  - Use an LLM API to extract structured data from the CV text.
+  - Calculate semantic similarity with a Job Description.
+  - Store the result in DynamoDB.
 
 ---
 
-## Despliegue
+## 🐳 Dependency Management with Docker
 
-El despliegue se realiza automáticamente mediante GitHub Actions (`.github/workflows/`), que:
+This project uses Docker and Docker Compose to create reproducible environments for the Lambda functions.
 
-1. Instala dependencias.
-2. Empaqueta cada Lambda.
-3. Sube el código a AWS.
-4. Opcional: configura los triggers si no existen.
+### Dockerfile
 
-> ⚠️ Para configurar correctamente los permisos, se requiere una política IAM con permisos para Lambda, S3, Textract, Bedrock y DynamoDB.
+Each `lambda/` subdirectory contains a `Dockerfile` that:
+
+- Uses a lightweight Python 3.13 base image.
+- Installs the dependencies listed in `requirements.txt`.
+
+### docker-compose
+
+The `docker-compose.yml` file orchestrates the build process of both Lambda environments.
+
+To build the images with dependencies:
+
+```bash
+docker-compose build
+```
+This will create two images (one per Lambda), containing Python 3.13 and all required libraries.
+These images do not include the application code (*_handler.py) and are not designed to run the function directly.
+
+They are intended to:
+
+- Validate and isolate dependency resolution. 
+- Be reused as a base in future deployment pipelines.
 
 ---
+# 🚀 Deployment
 
-## Requisitos
+Deployment is handled by GitHub Actions workflows:
 
-- Python 3.13
-- AWS CLI configurado
-- Acceso a:
-  - Amazon S3
-  - Amazon Textract
-  - API del LLM con su respectiva key
-  - DynamoDB
-  - API Gateway (para exponer `cv_processor`, opcional)
+- Install dependencies (via pip or Docker, depending on setup).
+
+- Package the Lambda code and dependencies.
+
+- Upload the zipped package to AWS Lambda.
+
+- Optionally configure triggers (e.g., S3 notifications).
+
+- ⚠️ Make sure the AWS IAM role has permissions for:
+  - Lambda (invoke, logs)
+  - S3 (read/write)
+  - Textract (document processing)
+  - DynamoDB (read/write)
+  - Bedrock (if using LLM APIs)
+  - API Gateway (if applicable)
 
 ---
+# ✍️ Contribution
 
-## ✍Contribución
+To add a new Lambda function, create a new folder under lambda/.
+- Include:
+  - your-function_handler.py 
+  - requirements.txt 
+  - Dockerfile (copy from existing ones)
 
-Este proyecto es parte de la plataforma **CVision**. Si necesitás agregar una nueva función Lambda:
-
-1. Creá un nuevo subdirectorio bajo `lambda/`.
-2. Incluí `nombre-de-funcion_handler.py` y `requirements.txt`.
-3. Agregá el deploy en el workflow correspondiente.
-4. Validá los permisos necesarios (IAM y triggers).
+- Update docker-compose.yml with a new service. 
+- Add a deployment workflow under .github/workflows/. 
+- Review IAM permissions and configure necessary AWS triggers.
