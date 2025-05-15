@@ -10,6 +10,7 @@ on:
 
 jobs:
   deploy:
+    name: deploy_cv-processor
     runs-on: ubuntu-latest
 
     steps:

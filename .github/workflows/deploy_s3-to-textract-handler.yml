@@ -10,6 +10,7 @@ on:
 
 jobs:
   deploy:
+    name: deploy_s3-to-textract
     runs-on: ubuntu-latest
 
     steps:
