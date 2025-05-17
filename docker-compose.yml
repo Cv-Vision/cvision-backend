@@ -10,3 +10,10 @@ services:
       context: .
       dockerfile: lambda/s3_to_textract/Dockerfile
     container_name: s3_to_textract_deps_builder
+
+  create_job_description:
+    build:
+      context: .
+      dockerfile: ./lambda/create_job_description/Dockerfile
+    container_name: create_job_description_builder
+
