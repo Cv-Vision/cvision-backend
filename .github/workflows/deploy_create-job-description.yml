@@ -10,6 +10,7 @@ on:
 
 jobs:
   deploy:
+    name: deploy_create-job-description
     runs-on: ubuntu-latest
 
     steps:
@@ -23,7 +24,7 @@ jobs:
 
       - name: Install dependencies and package Lambda for create-job-description
         run: |
-          cd lambda/create_job_description  # Ruta a nueva lambda
+          cd lambda/create_job_description
           pip install -r requirements.txt -t python  
           cp create_job_description_handler.py python/ 
           cd python

@@ -8,12 +8,12 @@ table = dynamodb.Table('JobDescriptionsTable')
 
 REQUIRED_FIELDS = ["title", "description", "location", "level", "skills"]
 
-def createJobDescriptionHandler(event, context):
+def lambda_handler(event, context):
     try:
-        # Parsear el body
+        # Parse body from the event
         body = json.loads(event.get("body", "{}"))
 
-        # Validar campos requeridos
+        # Validate required fields
         missing_fields = [field for field in REQUIRED_FIELDS if field not in body]
         if missing_fields:
             return {
@@ -21,9 +21,9 @@ def createJobDescriptionHandler(event, context):
                 "body": json.dumps({"message": f"Missing fields: {', '.join(missing_fields)}"})
             }
 
-        # Obtener user_id desde el token
+        # Get user_id from the event
         claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
-        user_id = claims.get("sub")  # 'sub' es el user_id único en Cognito
+        user_id = claims.get("sub")
 
         if not user_id:
             return {
@@ -31,11 +31,11 @@ def createJobDescriptionHandler(event, context):
                 "body": json.dumps({"message": "Unauthorized - user_id not found"})
             }
 
-        # Generar UUID y timestamp
+        # Generate unique job_id and created_at timestamp
         job_id = str(uuid.uuid4())
         created_at = datetime.utcnow().isoformat()
 
-        # Construir ítem para DynamoDB
+        # Build the item to be stored in DynamoDB
         item = {
             "pk": f"JD#{job_id}",
             "sk": f"USER#{user_id}",
@@ -44,13 +44,13 @@ def createJobDescriptionHandler(event, context):
             "description": body["description"],
             "location": body["location"],
             "level": body["level"],
-            "skills": body["skills"],  # Puede ser lista o string, depende de tu modelo
+            "skills": body["skills"],
         }
 
-        # Guardar en DynamoDB
+        # Save the item in DynamoDB
         table.put_item(Item=item)
 
-        # Devolver respuesta
+        # Return the job_id as a response
         return {
             "statusCode": 201,
             "body": json.dumps({"job_id": job_id})
