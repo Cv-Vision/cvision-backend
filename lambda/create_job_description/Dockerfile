@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Copy the requirements file into the container
 # The path is relative to the build context (cvision-backend/)
-COPY lambda/jd_dynamodb/requirements.txt .
+COPY lambda/create_job_description/requirements.txt .
 
 # Install the required packages inside the container
 RUN pip install --no-cache-dir -r requirements.txt
