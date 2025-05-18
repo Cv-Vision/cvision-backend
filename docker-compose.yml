@@ -14,6 +14,6 @@ services:
   create_job_description:
     build:
       context: .
-      dockerfile: ./lambda/create_job_description/Dockerfile
+      dockerfile: lambda/create_job_description/Dockerfile
     container_name: create_job_description_builder
 

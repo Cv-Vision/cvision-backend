@@ -28,7 +28,7 @@ jobs:
           pip install -r requirements.txt -t python  
           cp create_job_description_handler.py python/ 
           cd python
-          zip -r ../../../create_job_description_lambda.zip .
+          zip -r ../../../create_job_description_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -42,12 +42,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify create_job_description_lambda.zip exists
+      - name: Verify create_job_description_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/create_job_description_lambda.zip ]; then echo "create_job_description_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/create_job_description_handler_lambda.zip ]; then echo "create_job_description_handler_lambda.zip does not exist"; exit 1; fi
 
       - name: Deploy create-job-description to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name createJobDescriptionHandler \  
-            --zip-file fileb://$(pwd)/create_job_description_lambda.zip
+            --function-name createJobDescriptionHandler \
+            --zip-file fileb://$(pwd)/create_job_description_handler_lambda.zip
