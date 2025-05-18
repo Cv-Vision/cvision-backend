@@ -9,9 +9,9 @@ table = dynamodb.Table('JobDescriptionsTable')
 REQUIRED_FIELDS = ["title", "description", "location", "level", "skills"]
 
 def lambda_handler(event, context):
+    print("DEBUG EVENT:", json.dumps(event))
     try:
-        # Parse body from the event
-        body = json.loads(event.get("body", "{}"))
+        body = event
 
         # Validate required fields
         missing_fields = [field for field in REQUIRED_FIELDS if field not in body]
