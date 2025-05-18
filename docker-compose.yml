@@ -17,3 +17,10 @@ services:
       dockerfile: lambda/create_job_description/Dockerfile
     container_name: create_job_description_builder
 
+  generate_presigned_url:
+    build:
+      context: .
+      dockerfile: lambda/generate_presigned_url/Dockerfile
+    container_name: generate_presigned_url_lambda
+    environment:
+      - BUCKET_NAME=cvision-cv-bucket
