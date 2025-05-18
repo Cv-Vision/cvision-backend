@@ -7,7 +7,10 @@ BUCKET_NAME = os.environ.get("BUCKET_NAME", "cvision-cv-bucket")
 
 def lambda_handler(event, context):
     try:
-        body = json.loads(event['body'])
+        body = json.loads(event.get('body', '{}'))
+        
+        print("DEBUG EVENT:", event)
+        print("DEBUG BODY:", body)
 
         job_id = body.get("job_id")
         filenames = body.get("filenames")  # Esperamos un array
