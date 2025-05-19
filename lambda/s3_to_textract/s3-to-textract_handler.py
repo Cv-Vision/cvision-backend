@@ -106,38 +106,46 @@ def process_with_textract(bucket_name, file_key):
 
 def handle_zip_file(bucket_name, zip_key):
     """
-    Handle ZIP files uploaded to S3: extract PDFs and process them with Textract.
+    Handle ZIP files uploaded to S3 by extracting PDFs (even inside folders)
+    and processing them with Textract.
     """
-    # Download ZIP from S3 to /tmp
+    # Download the ZIP file from S3 to the Lambda's /tmp directory
     local_zip_path = f"/tmp/{os.path.basename(zip_key)}"
     s3_client.download_file(bucket_name, zip_key, local_zip_path)
     print(f"Downloaded ZIP: {local_zip_path}")
 
-    # Extract files to /tmp
+    # Create a directory to extract the ZIP contents
     extracted_dir = "/tmp/unzipped"
     os.makedirs(extracted_dir, exist_ok=True)
 
+    # Extract all files and folders inside the ZIP to the extraction directory
     with zipfile.ZipFile(local_zip_path, 'r') as zip_ref:
         zip_ref.extractall(extracted_dir)
     print(f"Extracted files to: {extracted_dir}")
 
-    # Loop through extracted files
-    for filename in os.listdir(extracted_dir):
-        file_path = os.path.join(extracted_dir, filename)
-        mime_type, _ = mimetypes.guess_type(file_path)
+    # Walk through all extracted directories and files recursively
+    for root, dirs, files in os.walk(extracted_dir):
+        for filename in files:
+            file_path = os.path.join(root, filename)
 
-        if mime_type == "application/pdf":
-            temp_key = f"temp_extracted/{filename}"
+            # Guess the MIME type of the current file
+            mime_type, _ = mimetypes.guess_type(file_path)
 
-            # Upload PDF to a temporary S3 location
-            s3_client.upload_file(file_path, bucket_name, temp_key)
-            print(f"Uploaded extracted PDF to S3: {temp_key}")
+            # If the file is a PDF, process it
+            if mime_type == "application/pdf":
+                # Create a temporary key to upload the extracted PDF back to S3
+                temp_key = f"temp_extracted/{filename}"
 
-            # Process it with Textract
-            process_with_textract(bucket_name, temp_key)
+                # Upload the extracted PDF file to the temporary S3 location
+                s3_client.upload_file(file_path, bucket_name, temp_key)
+                print(f"Uploaded extracted PDF to S3: {temp_key}")
 
-            # Clean up S3 temp file after processing
-            s3_client.delete_object(Bucket=bucket_name, Key=temp_key)
-            print(f"Deleted temporary S3 file: {temp_key}")
-        else:
-            print(f"Skipped unsupported file in ZIP: {filename}")
+                # Call the Textract processing function on the uploaded PDF
+                process_with_textract(bucket_name, temp_key)
+
+                # After processing, delete the temporary PDF from S3
+                s3_client.delete_object(Bucket=bucket_name, Key=temp_key)
+                print(f"Deleted temporary S3 file: {temp_key}")
+            else:
+                # Skip files that are not PDFs
+                print(f"Skipped unsupported file in ZIP: {filename}")
