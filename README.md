@@ -19,6 +19,22 @@ This repository contains the AWS Lambda functions used by the CVision platform f
   - Use an LLM API to extract structured data from the CV text.
   - Calculate semantic similarity with a Job Description.
   - Store the result in DynamoDB.
+ 
+### `createJobDescriptionHandler`
+
+- **Trigger**: HTTP POST via API Gateway.
+- **Responsibility**: Creates and stores a Job Description in DynamoDB.
+- **Security**: Requires authentication via AWS Cognito.
+- **Input**: JSON with title, description, location, level, skills.
+- **Output**: UUID (`job_id`) of the stored job description.
+
+### `generate_presigned_url_handler`
+
+- **Trigger**: HTTP POST via API Gateway.
+- **Responsibility**: Generates pre-signed S3 upload URLs for one or more PDF files under a specific `job_id`.
+- **Security**: Requires authentication via AWS Cognito.
+- **Input**: JSON with `job_id` and a list of `filenames`.
+- **Output**: Array of objects with `filename`, `upload_url`, and `s3_key`.
 
 ---
 
@@ -68,7 +84,7 @@ Deployment is handled by GitHub Actions workflows:
   - S3 (read/write)
   - Textract (document processing)
   - DynamoDB (read/write)
-  - Bedrock (if using LLM APIs)
+  - Cognito
   - API Gateway (if applicable)
 
 ---
