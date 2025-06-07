@@ -1,4 +1,4 @@
-name: deploy_cv_batch_invoker.yml
+name: Deploy cv-batch-invoker Lambda Function
 
 on:
   push:
@@ -49,5 +49,5 @@ jobs:
       - name: Deploy cv-batch-invoker to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name cv-batch-invoker \
+            --function-name cv_batch_invoker \
             --zip-file fileb://$(pwd)/cv-batch-invoker_handler_lambda.zip
