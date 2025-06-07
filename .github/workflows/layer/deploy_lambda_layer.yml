@@ -1,0 +1,61 @@
+name: Deploy Lambda Layer - pymupdf
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+jobs:
+  build_layer:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies for layer
+        run: |
+          mkdir -p lambda/cv_processor/pymupdf_layer/python
+          pip install PyMuPDF Pillow -t lambda/cv_processor/pymupdf_layer/python
+
+      - name: Zip layer content
+        run: |
+          cd lambda/cv_processor/pymupdf_layer
+          zip -r ../../../pymupdf_layer.zip python
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Publish Lambda Layer version
+        id: publish_layer
+        run: |
+          LAYER_ARN=$(aws lambda publish-layer-version \
+            --layer-name pymupdf-layer \
+            --description "PyMuPDF and Pillow Layer" \
+            --zip-file fileb://pymupdf_layer.zip \
+            --compatible-runtimes python3.9 python3.10 python3.11 python3.13 \
+            --query 'LayerVersionArn' \
+            --output text)
+          echo "LAYER_ARN=$LAYER_ARN" >> $GITHUB_ENV
+
+      - name: Update Lambda function to use new Layer version
+        run: |
+          aws lambda update-function-configuration \
+            --function-name cv-processor \
+            --layers $LAYER_ARN
+
+      - name: Cleanup generated files
+        run: |
+          rm -rf lambda/cv_processor/pymupdf_layer
+          rm -f pymupdf_layer.zip
