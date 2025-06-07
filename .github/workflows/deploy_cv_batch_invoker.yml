@@ -1,0 +1,53 @@
+name: deploy_cv_batch_invoker.yml
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: deploy_cv-batch-invoker
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies and package Lambda for cv-batch-invoker
+        run: |
+          cd lambda/cv_batch_invoker
+          pip install -r requirements.txt -t python
+          cp cv-batch-invoker_handler.py python/
+          cd python
+          zip -r ../../../cv-batch-invoker_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l
+
+      - name: Verify cv-batch-invoker_handler_lambda.zip exists
+        run: |
+          if [ ! -f $(pwd)/cv-batch-invoker_handler_lambda.zip ]; then echo "cv-batch-invoker_handler_lambda.zip does not exist"; exit 1; fi
+
+      - name: Deploy cv-batch-invoker to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name cv-batch-invoker \
+            --zip-file fileb://$(pwd)/cv-batch-invoker_handler_lambda.zip
