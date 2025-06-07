@@ -4,18 +4,28 @@ from datetime import datetime
 import boto3
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('JobDescriptionsTable')
+table = dynamodb.Table('JobDescriptions')
 
 REQUIRED_FIELDS = ["title", "description", "location", "level", "skills"]
 
 def lambda_handler(event, context):
     print("DEBUG EVENT:", json.dumps(event))
     try:
-        # Parse the body of the event
-        if isinstance(event.get("body"), str):
-            body = json.loads(event["body"])
-        else:
-            body = event["body"] or {}
+        # Verifica que el body exista
+        if "body" not in event:
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"message": "Missing request body"})
+            }
+
+            # Parsear el body si viene como string
+        try:
+            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+        except json.JSONDecodeError:
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"message": "Invalid JSON in request body"})
+            }
 
         # Validate required fields
         missing_fields = [field for field in REQUIRED_FIELDS if field not in body]

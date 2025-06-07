@@ -19,12 +19,14 @@ table = dynamodb.Table(os.getenv("JOB_DESCRIPTION_TABLE"))  # Ej: 'JobDescriptio
 CV_BUCKET = os.getenv("CV_BUCKET")
 RESULTS_BUCKET = os.getenv("RESULTS_BUCKET")
 
+
 def extract_text_from_pdf_bytes(pdf_bytes):
     text = ""
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
         for page in doc:
             text += page.get_text()
     return text
+
 
 def pdf_to_png_bytes(pdf_bytes):
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
@@ -35,21 +37,28 @@ def pdf_to_png_bytes(pdf_bytes):
     image.save(buffer, format="PNG")
     return buffer.getvalue()
 
+
 def image_file_to_bytes(image_bytes):
     with PIL.Image.open(BytesIO(image_bytes)) as img:
         buffer = BytesIO()
         img.save(buffer, format="PNG")
         return buffer.getvalue()
 
+
 def lambda_handler(event, context):
     try:
         print("📥 Event:", event)
-        body = event.get("body")
-        if body and isinstance(body, str):
-            body = json.loads(body)
+        # Soporta ambos tipos de evento:
+        if "body" in event and event["body"]:
+            # Caso API Gateway: body es string JSON
+            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+        else:
+            # Caso invocación directa: event ya es el payload
+            body = event
 
         cv_key = body["cv_key"]
         job_id = body["job_id"]
+        user_id = body["user_id"]
 
         # Obtain CV from S3
         response = s3.get_object(Bucket=CV_BUCKET, Key=cv_key)
@@ -65,7 +74,10 @@ def lambda_handler(event, context):
             return {"statusCode": 400, "body": json.dumps({"error": "Formato no soportado"})}
 
         # Get job description from DynamoDB
-        result = table.get_item(Key={"pk": f"JD#{job_id}"})
+        result = table.get_item(Key={
+            "pk": f"JD#{job_id}",
+            "sk": f"USER#{user_id}"
+        })
         item = result.get("Item")
         if not item:
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
@@ -76,17 +88,17 @@ def lambda_handler(event, context):
         # Create prompt for Gemini
         prompt = f"""
     Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
-    
+
     A continuación se presentarán varios currículums, cada uno en el siguiente formato:
-    
+
     [participant_id] - [Texto del currículum]
-    
+
     Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
     No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
     Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
-    
+
     Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
-    
+
     {{
       "participant_id": "...",
       "score": [puntaje de 0 a 100],
@@ -96,9 +108,9 @@ def lambda_handler(event, context):
         ...
       ]
     }}
-    
+
     Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
-    
+
     Descripción del puesto:
     {job_description}
     """
