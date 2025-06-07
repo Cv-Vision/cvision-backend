@@ -1,65 +1,147 @@
-import json
 import os
+import json
+import base64
+import uuid
+import boto3
+import fitz
+import PIL.Image
+from io import BytesIO
 import google.generativeai as genai
 
-# Set up Gemini API
-genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-model = genai.GenerativeModel("gemini-2.0-flash")
+# Configurations and environment variables
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+
+s3 = boto3.client("s3")
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table(os.getenv("JOB_DESCRIPTION_TABLE"))  # Ej: 'JobDescriptionsTable'
+
+CV_BUCKET = os.getenv("CV_BUCKET")
+RESULTS_BUCKET = os.getenv("RESULTS_BUCKET")
+
+def extract_text_from_pdf_bytes(pdf_bytes):
+    text = ""
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        for page in doc:
+            text += page.get_text()
+    return text
+
+def pdf_to_png_bytes(pdf_bytes):
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        page = doc.load_page(0)
+        pix = page.get_pixmap(dpi=150)
+        image = PIL.Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+def image_file_to_bytes(image_bytes):
+    with PIL.Image.open(BytesIO(image_bytes)) as img:
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+        return buffer.getvalue()
 
 def lambda_handler(event, context):
     try:
-        text = event.get("text", "")
-        job_description = event.get("job_description", "")
+        print("📥 Event:", event)
+        body = event.get("body")
+        if body and isinstance(body, str):
+            body = json.loads(body)
 
-        if not text:
-            raise ValueError("No text (CV) provided in the event.")
-        if not job_description:
-            raise ValueError("No job_description provided in the event.")
+        cv_key = body["cv_key"]
+        job_id = body["job_id"]
 
-        print(f"CV text received (cut): {text[:300]}")
-        print(f"Job description received (cut): {job_description[:300]}")
+        # Obtain CV from S3
+        response = s3.get_object(Bucket=CV_BUCKET, Key=cv_key)
+        cv_bytes = response["Body"].read()
 
+        # Convert to PNG image
+        ext = cv_key.lower().split('.')[-1]
+        if ext == "pdf":
+            image_bytes = pdf_to_png_bytes(cv_bytes)
+        elif ext in ["png", "jpg", "jpeg"]:
+            image_bytes = image_file_to_bytes(cv_bytes)
+        else:
+            return {"statusCode": 400, "body": json.dumps({"error": "Formato no soportado"})}
+
+        # Get job description from DynamoDB
+        result = table.get_item(Key={"pk": f"JD#{job_id}"})
+        item = result.get("Item")
+        if not item:
+            return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
+
+        job_description = item["description"]
+        participant_id = str(uuid.uuid4())
+
+        # Create prompt for Gemini
         prompt = f"""
-Actuá como un asistente de RRHH experto en análisis de CVs.
+    Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
+    
+    A continuación se presentarán varios currículums, cada uno en el siguiente formato:
+    
+    [participant_id] - [Texto del currículum]
+    
+    Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
+    No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
+    Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
+    
+    Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
+    
+    {{
+      "participant_id": "...",
+      "score": [puntaje de 0 a 100],
+      "reasons": [
+        "razón 1",
+        "razón 2",
+        ...
+      ]
+    }}
+    
+    Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
+    
+    Descripción del puesto:
+    {job_description}
+    """
 
-1. Extraé la siguiente información del CV:
-- Nombre
-- Email
-- Teléfono
-- Ubicación
-- LinkedIn
-- Experiencia Laboral
-- Educación
-- Habilidades Técnicas
-- Certificaciones
-- Idiomas
+        # Call Gemini
+        response = model.generate_content(
+            contents=[
+                prompt,
+                {
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": base64.b64encode(image_bytes).decode("utf-8")
+                    }
+                }
+            ],
+            generation_config={
+                "response_mime_type": "application/json"
+            }
+        )
 
-2. Evaluá la compatibilidad del candidato con la siguiente oferta laboral:
-{job_description}
+        result_json = response.text
+        print("✅ Result obtained from Gemini:", result_json)
 
-3. Asignale un puntaje de *match* de 0 a 100 al candidato, explicando por qué.
-
-4. Resaltá las habilidades técnicas y blandas más relevantes que coinciden con la descripción del puesto.
-
-5. Indicá áreas de mejora o posibles debilidades para el rol.
-
-Este es el CV:
-{text}
-"""
-
-        response = model.generate_content(prompt)
-        print("Gemini's response:")
-        print(response.text)
+        # Save result in S3
+        output_key = f"results/{participant_id}.json"
+        s3.put_object(
+            Bucket=RESULTS_BUCKET,
+            Key=output_key,
+            Body=result_json.encode("utf-8"),
+            ContentType="application/json"
+        )
 
         return {
             "statusCode": 200,
             "body": json.dumps({
-                "gemini_response": response.text
+                "message": "Evaluación completada",
+                "result_s3_path": f"s3://{RESULTS_BUCKET}/{output_key}",
+                "participant_id": participant_id
             })
         }
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print("❌ Error:", str(e))
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)})

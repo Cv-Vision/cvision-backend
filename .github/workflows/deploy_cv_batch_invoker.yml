@@ -1,4 +1,4 @@
-name: Deploy cv-batch-invoker Lambda Function
+name: Deploy to AWS Lambda - cv-batch-invoker
 
 on:
   push:
