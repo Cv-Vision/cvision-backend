@@ -1,2 +1,3 @@
 google-generativeai
-
+#fitz
+#pillow -> estas 2 estan en la layer de lambda
