@@ -11,7 +11,7 @@ REQUIRED_FIELDS = ["title", "description", "location", "level", "skills"]
 def lambda_handler(event, context):
     print("DEBUG EVENT:", json.dumps(event))
     try:
-        body = event
+        body = json.loads(event.get("body", "{}"))
 
         # Validate required fields
         missing_fields = [field for field in REQUIRED_FIELDS if field not in body]
