@@ -6,6 +6,7 @@ import boto3
 import fitz
 import PIL.Image
 from io import BytesIO
+from datetime import datetime
 import google.generativeai as genai
 
 # Configurations and environment variables
@@ -14,8 +15,9 @@ model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 
 s3 = boto3.client("s3")
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.getenv("JOB_DESCRIPTION_TABLE"))  # Ej: 'JobDescriptionsTable'
 
+JOB_DESCRIPTION_TABLE = os.getenv("JOB_DESCRIPTION_TABLE", "JobDescriptions")
+CV_ANALYSIS_RESULTS_TABLE = os.getenv("CV_ANALYSIS_RESULTS_TABLE", "CVAnalysisResults")
 CV_BUCKET = os.getenv("CV_BUCKET")
 RESULTS_BUCKET = os.getenv("RESULTS_BUCKET")
 
@@ -48,12 +50,10 @@ def image_file_to_bytes(image_bytes):
 def lambda_handler(event, context):
     try:
         print("📥 Event:", event)
-        # Soporta ambos tipos de evento:
+        # Parse request body
         if "body" in event and event["body"]:
-            # Caso API Gateway: body es string JSON
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
         else:
-            # Caso invocación directa: event ya es el payload
             body = event
 
         cv_key = body["cv_key"]
@@ -74,7 +74,8 @@ def lambda_handler(event, context):
             return {"statusCode": 400, "body": json.dumps({"error": "Formato no soportado"})}
 
         # Get job description from DynamoDB
-        result = table.get_item(Key={
+        job_table = dynamodb.Table(JOB_DESCRIPTION_TABLE)
+        result = job_table.get_item(Key={
             "pk": f"JD#{job_id}",
             "sk": f"USER#{user_id}"
         })
@@ -142,6 +143,27 @@ def lambda_handler(event, context):
             Body=result_json.encode("utf-8"),
             ContentType="application/json"
         )
+
+        # Parse result and validate structure
+        parsed_json = json.loads(result_json)
+        if not all(k in parsed_json for k in ["participant_id", "score", "reasons"]):
+            return {
+                "statusCode": 500,
+                "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
+            }
+
+        # Save to DynamoDB
+        results_table = dynamodb.Table(CV_ANALYSIS_RESULTS_TABLE)
+        results_table.put_item(Item={
+            "pk": f"JOB#{job_id}",
+            "sk": f"CV#{participant_id}",
+            "participant_id": participant_id,
+            "user_id": user_id,
+            "score": parsed_json["score"],
+            "reasons": parsed_json.get("reasons", []),
+            "s3_key": output_key,
+            "timestamp": datetime.utcnow().isoformat()
+        })
 
         return {
             "statusCode": 200,
