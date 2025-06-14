@@ -44,7 +44,7 @@ def lambda_handler(event, context):
 
     # Verify if job_id exists in the DynamoDB table
     job_pk = f"JD#{job_id}"
-    job_sk = user_id
+    job_sk = f"USER#{user_id}"
     try:
         job_result = job_table.get_item(Key={"pk": job_pk, "sk": job_sk})
         if "Item" not in job_result:
