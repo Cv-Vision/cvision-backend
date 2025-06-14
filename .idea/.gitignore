@@ -6,3 +6,7 @@
 # Datasource local storage ignored files
 /dataSources/
 /dataSources.local.xml
+/cvision-lambda.iml
+/misc.xml
+/inspectionProfiles/profiles_settings.xml
+/vcs.xml
