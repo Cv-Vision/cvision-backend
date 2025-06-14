@@ -2,23 +2,24 @@ import json
 import uuid
 from datetime import datetime
 import boto3
+import os
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table('JobDescriptions')
+table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
-REQUIRED_FIELDS = ["title", "description", "location", "level", "skills"]
+REQUIRED_FIELDS = ["title", "description"]
 
 def lambda_handler(event, context):
     print("DEBUG EVENT:", json.dumps(event))
     try:
-        # Verifica que el body exista
+        # Verify that the event has a body
         if "body" not in event:
             return {
                 "statusCode": 400,
                 "body": json.dumps({"message": "Missing request body"})
             }
 
-            # Parsear el body si viene como string
+        # Parse the body of the event
         try:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
         except json.JSONDecodeError:
@@ -56,9 +57,8 @@ def lambda_handler(event, context):
             "created_at": created_at,
             "title": body["title"],
             "description": body["description"],
-            "location": body["location"],
-            "level": body["level"],
-            "skills": body["skills"],
+            "status": 1,  # 1 means active
+            "candidates": [],  # Initialize with an empty list
         }
 
         # Save the item in DynamoDB

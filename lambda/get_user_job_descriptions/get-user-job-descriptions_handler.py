@@ -3,7 +3,7 @@ import json
 import os
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['JOB_DESCRIPTIONS_TABLE'])
+table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
 def lambda_handler(event, context):
     # Get user_id from the event
