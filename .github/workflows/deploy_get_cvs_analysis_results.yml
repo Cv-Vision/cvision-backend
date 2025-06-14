@@ -46,7 +46,7 @@ jobs:
 
       - name: Verify get-cvs-analysis-results_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/get-cvs-analysis-results_handler_handler_lambda.zip ]; then echo "get-cvs-analysis-results_handler_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/get-cvs-analysis-results_handler_lambda.zip ]; then echo "get-cvs-analysis-results_handler_lambda.zip does not exist"; exit 1; fi
 
       - name: Deploy get-cvs-analysis-results to AWS Lambda
         run: |
