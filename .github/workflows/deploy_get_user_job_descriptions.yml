@@ -1,0 +1,53 @@
+name: Deploy to AWS Lambda - get-user-job-descriptions
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    name: get-user-job-descriptions_handler
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies and package Lambda for get-user-job-descriptions_handler
+        run: |
+          cd lambda/get_user_job_descriptions
+          pip install -r requirements.txt -t python  
+          cp get-user-job-descriptions_handler.py python/ 
+          cd python
+          zip -r ../../../get-user-job-descriptions_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l
+
+      - name: Verify get-user-job-descriptions_handler_lambda.zip exists
+        run: |
+          if [ ! -f $(pwd)/get-user-job-descriptions_handler_lambda.zip ]; then echo "get-user-job-descriptions_handler_lambda.zip does not exist"; exit 1; fi
+
+      - name: Deploy get-user-job-descriptions to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name get_user_job_descriptions \
+            --zip-file fileb://$(pwd)/get-user-job-descriptions_handler_lambda.zip
