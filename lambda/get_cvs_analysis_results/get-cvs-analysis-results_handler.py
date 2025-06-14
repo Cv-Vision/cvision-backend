@@ -25,16 +25,6 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Missing job_id"})
         }
 
-    # Get user_id from Cognito claims
-    claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
-    user_id = claims.get("sub")
-
-    if not user_id:
-        return {
-            "statusCode": 401,
-            "body": json.dumps({"message": "Unauthorized"})
-        }
-
     # Verify that the job_id belongs to this user
     try:
         response = job_postings_table.get_item(
