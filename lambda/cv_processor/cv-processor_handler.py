@@ -142,7 +142,7 @@ def lambda_handler(event, context):
             }
 
         # Save to S3
-        output_key = f"results/{participant_id}.json"
+        output_key = f"results/{job_id}/{participant_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
