@@ -6,7 +6,7 @@ ENV PYTHONUNBUFFERED=1
 
 # Copy the requirements file into the container
 # The path is relative to the build context (cvision-backend/)
-COPY lambda/get_user_job_descriptions/requirements.txt .
+COPY lambda/get_recruiter_job_postings/requirements.txt .
 
 # Install the required packages inside the container
 RUN pip install --no-cache-dir -r requirements.txt
