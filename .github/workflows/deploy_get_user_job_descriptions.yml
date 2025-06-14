@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - get-user-job-descriptions_handler
+name: Deploy to AWS Lambda - get-user-job-descriptions
 
 on:
   push:

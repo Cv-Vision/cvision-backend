@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - generate_presigned_url_handler
+name: Deploy to AWS Lambda - generate_presigned_url
 
 on:
   push:
