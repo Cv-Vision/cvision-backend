@@ -1,9 +1,16 @@
 import boto3
 import json
 import os
+import decimal
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+
+# Method to handle decimal serialization for JSON
+def decimal_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    raise TypeError
 
 def lambda_handler(event, context):
     # Get user_id from the event
@@ -29,7 +36,7 @@ def lambda_handler(event, context):
 
         return {
             "statusCode": 200,
-            "body": json.dumps(items),
+            "body": json.dumps(items, default=decimal_default),
             "headers": {
                 "Content-Type": "application/json"
             }
