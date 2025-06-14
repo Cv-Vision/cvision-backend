@@ -43,7 +43,7 @@ def lambda_handler(event, context):
         return {"statusCode": 400, "body": json.dumps({"message": "Falta job_id en el evento"})}
 
     # Verify if job_id exists in the DynamoDB table
-    job_pk = f"JOB#{job_id}"
+    job_pk = f"JD#{job_id}"
     try:
         job_result = job_table.get_item(Key={"pk": job_pk})
         if "Item" not in job_result:
