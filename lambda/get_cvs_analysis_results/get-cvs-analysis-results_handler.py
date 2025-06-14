@@ -1,10 +1,17 @@
 import boto3
 import os
 import json
+import decimal
 
 dynamodb = boto3.resource('dynamodb')
 cv_results_table = dynamodb.Table(os.environ['CV_ANALYSIS_RESULTS_TABLE'])
 job_postings_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+
+# Method to handle decimal serialization for JSON
+def decimal_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    raise TypeError
 
 def lambda_handler(event, context):
     # Get user_id from Cognito claims
@@ -59,7 +66,7 @@ def lambda_handler(event, context):
         ]
         return {
             "statusCode": 200,
-            "body": json.dumps(formatted),
+            "body": json.dumps(formatted, default=decimal_default),
             "headers": {"Content-Type": "application/json"}
         }
 
