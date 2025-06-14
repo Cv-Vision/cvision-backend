@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - get-user-job-descriptions
+name: Deploy to AWS Lambda - get-recruiter-job-postings
 
 on:
   push:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy:
-    name: get-user-job-descriptions_handler
+    name: get-recruiter-job-postings_handler
     runs-on: ubuntu-latest
 
     steps:
@@ -22,13 +22,13 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda for get-user-job-descriptions_handler
+      - name: Install dependencies and package Lambda for get-recruiter-job-postings_handler
         run: |
-          cd lambda/get_user_job_descriptions
+          cd lambda/get_recruiter_job_postings
           pip install -r requirements.txt -t python  
-          cp get-user-job-descriptions_handler.py python/ 
+          cp get-recruiter-job-postings_handler.py python/ 
           cd python
-          zip -r ../../../get-user-job-descriptions_handler_lambda.zip .
+          zip -r ../../../get-recruiter-job-postings_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -42,12 +42,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify get-user-job-descriptions_handler_lambda.zip exists
+      - name: Verify get-recruiter-job-postings_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/get-user-job-descriptions_handler_lambda.zip ]; then echo "get-user-job-descriptions_handler_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/get-recruiter-job-postings_handler_lambda.zip ]; then echo "get-recruiter-job-postings_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy get-user-job-descriptions to AWS Lambda
+      - name: Deploy get-recruiter-job-postings to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name get_user_job_descriptions \
-            --zip-file fileb://$(pwd)/get-user-job-descriptions_handler_lambda.zip
+            --function-name get_recruiter_job_postings \
+            --zip-file fileb://$(pwd)/get-recruiter-job-postings_handler_lambda.zip

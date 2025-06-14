@@ -16,10 +16,11 @@ model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 s3 = boto3.client("s3")
 dynamodb = boto3.resource('dynamodb')
 
-JOB_DESCRIPTION_TABLE = os.getenv("JOB_DESCRIPTION_TABLE", "JobDescriptions")
-CV_ANALYSIS_RESULTS_TABLE = os.getenv("CV_ANALYSIS_RESULTS_TABLE", "CVAnalysisResults")
-CV_BUCKET = os.getenv("CV_BUCKET")
-RESULTS_BUCKET = os.getenv("RESULTS_BUCKET")
+job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
+
+cv_bucket = os.environ["CV_BUCKET"]
+results_bucket = os.environ["RESULTS_BUCKET"]
 
 
 def extract_text_from_pdf_bytes(pdf_bytes):
@@ -61,7 +62,7 @@ def lambda_handler(event, context):
         user_id = body["user_id"]
 
         # Obtain CV from S3
-        response = s3.get_object(Bucket=CV_BUCKET, Key=cv_key)
+        response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
 
         # Convert to PNG image
@@ -74,7 +75,6 @@ def lambda_handler(event, context):
             return {"statusCode": 400, "body": json.dumps({"error": "Formato no soportado"})}
 
         # Get job description from DynamoDB
-        job_table = dynamodb.Table(JOB_DESCRIPTION_TABLE)
         result = job_table.get_item(Key={
             "pk": f"JD#{job_id}",
             "sk": f"USER#{user_id}"
@@ -127,40 +127,37 @@ def lambda_handler(event, context):
                     }
                 }
             ],
-            generation_config={
-                "response_mime_type": "application/json"
-            }
+            generation_config={"response_mime_type": "application/json"},
         )
 
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
 
-        # Save result in S3
-        output_key = f"results/{participant_id}.json"
-        s3.put_object(
-            Bucket=RESULTS_BUCKET,
-            Key=output_key,
-            Body=result_json.encode("utf-8"),
-            ContentType="application/json"
-        )
-
-        # Parse result and validate structure
-        parsed_json = json.loads(result_json)
-        if not all(k in parsed_json for k in ["participant_id", "score", "reasons"]):
+        # Parse result
+        parsed = json.loads(result_json)
+        if not all(k in parsed for k in ["participant_id", "score", "reasons"]):
             return {
                 "statusCode": 500,
                 "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
             }
 
+        # Save to S3
+        output_key = f"results/{participant_id}.json"
+        s3.put_object(
+            Bucket=results_bucket,
+            Key=output_key,
+            Body=result_json.encode("utf-8"),
+            ContentType="application/json"
+        )
+
         # Save to DynamoDB
-        results_table = dynamodb.Table(CV_ANALYSIS_RESULTS_TABLE)
         results_table.put_item(Item={
             "pk": f"JOB#{job_id}",
-            "sk": f"CV#{participant_id}",
+            "sk": f"PARTICIPANT#{participant_id}",
             "participant_id": participant_id,
             "user_id": user_id,
-            "score": parsed_json["score"],
-            "reasons": parsed_json.get("reasons", []),
+            "score": parsed["score"],
+            "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
             "timestamp": datetime.utcnow().isoformat()
         })
@@ -169,7 +166,7 @@ def lambda_handler(event, context):
             "statusCode": 200,
             "body": json.dumps({
                 "message": "Evaluación completada",
-                "result_s3_path": f"s3://{RESULTS_BUCKET}/{output_key}",
+                "result_s3_path": f"s3://{results_bucket}/{output_key}",
                 "participant_id": participant_id
             })
         }
