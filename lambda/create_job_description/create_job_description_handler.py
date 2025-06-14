@@ -36,6 +36,13 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": f"Missing fields: {', '.join(missing_fields)}"})
             }
 
+        # Validate description is not empty
+        if not body["description"].strip():
+            return {
+                "statusCode": 400,
+                "body": json.dumps({"message": "Description cannot be empty"})
+            }
+
         # Get user_id from the event
         claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
         user_id = claims.get("sub")
