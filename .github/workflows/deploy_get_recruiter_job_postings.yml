@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies and package Lambda for get-recruiter-job-postings_handler
         run: |
-          cd lambda/get-recruiter-job-postings
+          cd lambda/get_recruiter_job_postings
           pip install -r requirements.txt -t python  
           cp get-recruiter-job-postings_handler.py python/ 
           cd python
