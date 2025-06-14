@@ -159,7 +159,7 @@ def lambda_handler(event, context):
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
-            "timestamp": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat()
         })
 
         return {
