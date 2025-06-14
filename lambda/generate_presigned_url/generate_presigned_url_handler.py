@@ -27,13 +27,29 @@ def lambda_handler(event, context):
 
         result = []
         for filename in filenames:
-            key = f"uploads/{job_id}/{filename}"
+            # Detect file type and set content type
+            if filename.lower().endswith('.pdf'):
+                content_type = 'application/pdf'
+                key_prefix = 'uploads'
+            elif filename.lower().endswith('.zip'):
+                content_type = 'application/zip'
+                key_prefix = 'compressed_uploads'
+            elif filename.lower().endswith('.rar'):
+                content_type = 'application/x-rar-compressed'
+                key_prefix = 'compressed_uploads'
+            else:
+                return {
+                    "statusCode": 400,
+                    "headers": cors_headers(),
+                    "body": json.dumps({"error": f"Tipo de archivo no soportado: {filename}"})
+                }
+            key = f"{key_prefix}/{job_id}/{filename}"
             url = s3.generate_presigned_url(
                 ClientMethod='put_object',
                 Params={
                     'Bucket': BUCKET_NAME,
                     'Key': key,
-                    'ContentType': 'application/pdf'
+                    'ContentType': content_type
                 },
                 ExpiresIn=3600
             )
