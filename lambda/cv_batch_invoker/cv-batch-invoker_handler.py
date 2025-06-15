@@ -14,7 +14,25 @@ s3 = boto3.client("s3")
 cv_bucket = os.environ.get("CV_BUCKET")
 job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
+# CORS headers configuration
+# Note: In production, replace the Origin with our actual domain
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400"  # 24 hours
+}
+
 def lambda_handler(event, context):
+    # Handle preflight OPTIONS request
+    if event.get('httpMethod') == 'OPTIONS':
+        return {
+            "statusCode": 204,  # No content for OPTIONS
+            "headers": CORS_HEADERS,
+            "body": ""
+        }
+
     # Get user_id from the event
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
@@ -22,6 +40,7 @@ def lambda_handler(event, context):
     if not user_id:
         return {
             "statusCode": 401,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": "Unauthorized - user_id not found"})
         }
 
@@ -33,6 +52,7 @@ def lambda_handler(event, context):
     except json.JSONDecodeError:
         return {
             "statusCode": 400,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": "Invalid JSON in request body"})
         }
 
@@ -40,7 +60,7 @@ def lambda_handler(event, context):
     job_id = body.get("job_id")
 
     if not job_id:
-        return {"statusCode": 400, "body": json.dumps({"message": "Falta job_id en el evento"})}
+        return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Falta job_id en el evento"})}
 
     # Verify if job_id exists in the DynamoDB table
     job_pk = f"JD#{job_id}"
@@ -50,11 +70,13 @@ def lambda_handler(event, context):
         if "Item" not in job_result:
             return {
                 "statusCode": 404,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": f"El job_id {job_id} no existe o no pertenece al usuario"})
             }
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": f"Error al verificar job_id: {str(e)}"})
         }
 
@@ -71,6 +93,7 @@ def lambda_handler(event, context):
     if len(cv_files) == 0:
         return {
             "statusCode": 404,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"error": "No se encontraron archivos para procesar en el bucket"})
         }
 
@@ -100,5 +123,9 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 200,
+        "headers": {
+            **CORS_HEADERS,
+            "Content-Type": "application/json"
+        },
         "body": json.dumps({"message": "Todos los CVs enviados a procesamiento"})
     }
