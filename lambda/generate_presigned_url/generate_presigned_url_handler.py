@@ -4,7 +4,10 @@ import os
 import re
 
 s3 = boto3.client('s3')
-BUCKET_NAME = os.environ.get("BUCKET_NAME", "cvision-cv-bucket")
+cv_bucket = os.environ["CV_BUCKET"]
+
+dynamodb = boto3.resource('dynamodb')
+job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
 # CORS headers configuration
 # Note: In production, replace the Origin with our actual domain
@@ -16,9 +19,17 @@ CORS_HEADERS = {
     "Access-Control-Max-Age": "86400"  # 24 hours
 }
 
-
 def sanitize_filename(name):
     return re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
+
+def validate_job_id(job_id):
+    try:
+        prefixed_job_id = f"JD#{job_id}"
+        response = job_table.get_item(Key={"job_id": prefixed_job_id})
+        return "Item" in response
+    except Exception as e:
+        print(f"Error al consultar DynamoDB: {e}")
+        return False
 
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
@@ -57,7 +68,13 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": "Se requiere job_id y un array de filenames"})
             }
 
-        # TODO: Validar job_id contra DynamoDB
+        # Validate job_id against DynamoDB
+        if not validate_job_id(job_id):
+            return {
+                "statusCode": 404,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"error": "job_id no encontrado"})
+            }
 
         result = []
         for filename in filenames:
@@ -66,7 +83,7 @@ def lambda_handler(event, context):
             url = s3.generate_presigned_url(
                 ClientMethod='put_object',
                 Params={
-                    'Bucket': BUCKET_NAME,
+                    'Bucket': cv_bucket,
                     'Key': key,
                     'ContentType': 'application/pdf'
                 },
