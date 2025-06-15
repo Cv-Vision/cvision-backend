@@ -1,68 +1,83 @@
-import json
 import boto3
 import os
+import json
+import decimal
 
-s3 = boto3.client('s3')
-BUCKET_NAME = os.environ.get("BUCKET_NAME", "cvision-cv-bucket")
+dynamodb = boto3.resource('dynamodb')
+cv_results_table = dynamodb.Table(os.environ['CV_ANALYSIS_RESULTS_TABLE'])
+job_postings_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+
+def decimal_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    raise TypeError
+
+CORS_HEADERS = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Credentials": True
+}
 
 def lambda_handler(event, context):
+    claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+    user_id = claims.get("sub")
+
+    if not user_id:
+        return {
+            "statusCode": 401,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": "Unauthorized"})
+        }
+
+    job_id = event.get("queryStringParameters", {}).get("job_id")
+    if not job_id:
+        return {
+            "statusCode": 400,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": "Missing job_id"})
+        }
+
     try:
-        # Parse the incoming event to get the body
-        body = json.loads(event.get('body', '{}'))
-
-        print("DEBUG EVENT:", event)
-        print("DEBUG BODY:", body)
-
-        job_id = body.get("job_id")
-        filenames = body.get("filenames")  # We expect an array of filenames
-
-        if not job_id or not filenames or not isinstance(filenames, list):
+        response = job_postings_table.get_item(
+            Key={"pk": f"JD#{job_id}", "sk": f"USER#{user_id}"}
+        )
+        if "Item" not in response:
             return {
-                "statusCode": 400,
-                "headers": cors_headers(),
-                "body": json.dumps({"error": "Se requiere job_id y un array de filenames"})
+                "statusCode": 403,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"message": "You do not own this job posting"})
             }
+    except Exception as e:
+        return {
+            "statusCode": 500,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"error": f"Failed ownership check: {str(e)}"})
+        }
 
-        # TODO: Validar job_id contra DynamoDB
-
-        result = []
-        for filename in filenames:
-            key = f"uploads/{job_id}/{filename}"
-            url = s3.generate_presigned_url(
-                ClientMethod='put_object',
-                Params={
-                    'Bucket': BUCKET_NAME,
-                    'Key': key,
-                    'ContentType': 'application/pdf'
-                },
-                ExpiresIn=3600
-            )
-            result.append({
-                "filename": filename,
-                "upload_url": url,
-                "s3_key": key
-            })
-
+    try:
+        results = cv_results_table.query(
+            KeyConditionExpression="pk = :pk",
+            ExpressionAttributeValues={":pk": f"JOB#{job_id}"}
+        )
+        items = results.get("Items", [])
+        formatted = [
+            {
+                "participant_id": item["participant_id"],
+                "score": item.get("score"),
+                "reasons": item.get("reasons", []),
+                "created_at": item.get("created_at")
+            }
+            for item in items
+        ]
         return {
             "statusCode": 200,
-            "headers": cors_headers(),
-            "body": json.dumps({
-                "job_id": job_id,
-                "presigned_urls": result
-            })
+            "headers": CORS_HEADERS,
+            "body": json.dumps(formatted, default=decimal_default)
         }
 
     except Exception as e:
         return {
             "statusCode": 500,
-            "headers": cors_headers(),
-            "body": json.dumps({"error": str(e)})
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"error": f"Error fetching results: {str(e)}"})
         }
-
-
-def cors_headers():
-    return {
-        "Access-Control-Allow-Origin": "http://localhost:5173",
-        "Access-Control-Allow-Headers": "Content-Type,Authorization",
-        "Access-Control-Allow-Methods": "OPTIONS,POST"
-    }
