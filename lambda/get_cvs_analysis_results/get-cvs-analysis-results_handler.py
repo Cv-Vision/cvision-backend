@@ -11,11 +11,13 @@ job_postings_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 # CORS headers configuration
 # Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
-    "Access-Control-Allow-Origin": "http://localhost:3000",  # Development environment
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-    "Access-Control-Allow-Credentials": "true"
+    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400"  # 24 hours
 }
+
 
 # Method to handle decimal serialization for JSON
 def decimal_default(obj):
@@ -28,7 +30,7 @@ def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
         return {
-            "statusCode": 200,
+            "statusCode": 204,  # No content for OPTIONS
             "headers": CORS_HEADERS,
             "body": ""
         }
