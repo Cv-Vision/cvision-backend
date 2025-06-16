@@ -102,6 +102,7 @@ def lambda_handler(event, context):
 
     {{
       "participant_id": "...",
+      "name" : ("nombre del candidato"),
       "score": [puntaje de 0 a 100],
       "reasons": [
         "razón 1",
@@ -135,7 +136,7 @@ def lambda_handler(event, context):
 
         # Parse result
         parsed = json.loads(result_json)
-        if not all(k in parsed for k in ["participant_id", "score", "reasons"]):
+        if not all(k in parsed for k in ["participant_id", "score", "name", "reasons"]):
             return {
                 "statusCode": 500,
                 "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
@@ -154,6 +155,7 @@ def lambda_handler(event, context):
         results_table.put_item(Item={
             "pk": f"JOB#{job_id}",
             "sk": f"PARTICIPANT#{participant_id}",
+            "name": parsed["name"],
             "participant_id": participant_id,
             "user_id": user_id,
             "score": parsed["score"],
