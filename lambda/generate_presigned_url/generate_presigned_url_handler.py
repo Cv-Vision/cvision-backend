@@ -2,6 +2,14 @@ import json
 import boto3
 import os
 import re
+from enum import Enum
+
+# === ENUM for job status ===
+class JobStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    CANCELLED = "CANCELLED"
+    DELETED = "DELETED"
 
 s3 = boto3.client('s3')
 cv_bucket = os.environ["CV_BUCKET"]
@@ -22,11 +30,16 @@ CORS_HEADERS = {
 def sanitize_filename(name):
     return re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
 
-def validate_job_id(job_id):
+def validate_job_id(job_id, user_id):
     try:
-        prefixed_job_id = f"JD#{job_id}"
-        response = job_table.get_item(Key={"job_id": prefixed_job_id})
-        return "Item" in response
+        raw_job_id = job_id.replace("JD#", "") if job_id.startswith("JD#") else job_id
+        pk = f"JD#{raw_job_id}"
+        sk = f"USER#{user_id}"
+        response = job_table.get_item(Key={"pk": pk, "sk": sk})
+        item = response.get("Item")
+        if not item:
+            return False
+        return item.get("status") != JobStatus.DELETED
     except Exception as e:
         print(f"Error al consultar DynamoDB: {e}")
         return False
@@ -69,7 +82,7 @@ def lambda_handler(event, context):
             }
 
         # Validate job_id against DynamoDB
-        if not validate_job_id(job_id):
+        if not validate_job_id(job_id, user_id):
             return {
                 "statusCode": 404,
                 "headers": CORS_HEADERS,
