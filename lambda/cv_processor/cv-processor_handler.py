@@ -133,11 +133,6 @@ def lambda_handler(event, context):
 
         # Parse result
         parsed = json.loads(result_json)
-        if not all(k in parsed for k in ["recruiter_id", "score", "reasons"]):
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
-            }
 
         # Save to S3
         output_key = f"results/{job_id}/{recruiter_id}.json"
