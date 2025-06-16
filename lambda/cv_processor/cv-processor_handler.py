@@ -84,7 +84,7 @@ def lambda_handler(event, context):
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
 
         job_description = item["description"]
-        recruiter_id = item["user_id"]
+        recruiter_id = user_id
 
         # Create prompt for Gemini
         prompt = f"""
