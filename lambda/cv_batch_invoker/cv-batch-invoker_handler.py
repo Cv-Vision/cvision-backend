@@ -63,7 +63,8 @@ def lambda_handler(event, context):
         return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Falta job_id en el evento"})}
 
     # Verify if job_id exists in the DynamoDB table
-    job_pk = f"JD#{job_id}"
+    raw_job_id = job_id.replace("JD#", "") if job_id.startswith("JD#") else job_id
+    job_pk = f"JD#{raw_job_id}"
     job_sk = f"USER#{user_id}"
     try:
         job_result = job_table.get_item(Key={"pk": job_pk, "sk": job_sk})
