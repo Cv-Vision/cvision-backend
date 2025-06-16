@@ -76,7 +76,7 @@ def lambda_handler(event, context):
 
         # Get job description from DynamoDB
         result = job_table.get_item(Key={
-            "pk": f"JD#{job_id}",
+            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
             "sk": f"USER#{user_id}"
         })
         item = result.get("Item")
@@ -102,6 +102,7 @@ def lambda_handler(event, context):
 
     {{
       "participant_id": "...",
+      "name" : ("nombre del candidato"),
       "score": [puntaje de 0 a 100],
       "reasons": [
         "razón 1",
@@ -154,6 +155,7 @@ def lambda_handler(event, context):
         results_table.put_item(Item={
             "pk": f"JOB#{job_id}",
             "sk": f"PARTICIPANT#{participant_id}",
+            "name": parsed["name"],
             "participant_id": participant_id,
             "user_id": user_id,
             "score": parsed["score"],
