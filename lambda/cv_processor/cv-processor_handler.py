@@ -84,7 +84,7 @@ def lambda_handler(event, context):
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
 
         job_description = item["description"]
-        participant_id = str(uuid.uuid4())
+        recruiter_id = item["user_id"]
 
         # Create prompt for Gemini
         prompt = f"""
@@ -92,7 +92,7 @@ def lambda_handler(event, context):
 
     A continuación se presentarán varios currículums, cada uno en el siguiente formato:
 
-    [participant_id] - [Texto del currículum]
+    [recruiter_id] - [Texto del currículum]
 
     Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
     No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
@@ -101,7 +101,7 @@ def lambda_handler(event, context):
     Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
     {{
-      "participant_id": "...",
+      "recruiter_id": "...",
       "name" : ("nombre del candidato"),
       "score": [puntaje de 0 a 100],
       "reasons": [
@@ -136,14 +136,14 @@ def lambda_handler(event, context):
 
         # Parse result
         parsed = json.loads(result_json)
-        if not all(k in parsed for k in ["participant_id", "score", "reasons"]):
+        if not all(k in parsed for k in ["recruiter_id", "score", "reasons"]):
             return {
                 "statusCode": 500,
                 "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
             }
 
         # Save to S3
-        output_key = f"results/{job_id}/{participant_id}.json"
+        output_key = f"results/{job_id}/{recruiter_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
@@ -154,9 +154,9 @@ def lambda_handler(event, context):
         # Save to DynamoDB
         results_table.put_item(Item={
             "pk": f"RESULT#{job_id}",
-            "sk": f"PARTICIPANT#{participant_id}",
+            "sk": f"RECRUITER#{recruiter_id}",
             "name": parsed["name"],
-            "participant_id": participant_id,
+            "recruiter_id": recruiter_id,
             "user_id": user_id,
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
@@ -169,7 +169,7 @@ def lambda_handler(event, context):
             "body": json.dumps({
                 "message": "Evaluación completada",
                 "result_s3_path": f"s3://{results_bucket}/{output_key}",
-                "participant_id": participant_id
+                "recruiter_id": recruiter_id
             })
         }
 
