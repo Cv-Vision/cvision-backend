@@ -153,7 +153,7 @@ def lambda_handler(event, context):
 
         # Save to DynamoDB
         results_table.put_item(Item={
-            "pk": f"JOB#{job_id}",
+            "pk": f"RESULT#{job_id}",
             "sk": f"PARTICIPANT#{participant_id}",
             "name": parsed["name"],
             "participant_id": participant_id,
