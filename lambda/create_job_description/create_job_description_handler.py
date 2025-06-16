@@ -3,6 +3,14 @@ import uuid
 from datetime import datetime
 import boto3
 import os
+from enum import Enum
+
+# === ENUM for job status ===
+class JobStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    CANCELLED = "CANCELLED"
+    DELETED = "DELETED"
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
@@ -79,7 +87,7 @@ def lambda_handler(event, context):
             "created_at": created_at,
             "title": body["title"],
             "description": body["description"],
-            "status": 1,  # 1 means active
+            "status": "ACTIVE",
             "candidates": [],  # Initialize with an empty list
         }
 
