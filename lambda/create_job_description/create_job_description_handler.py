@@ -9,6 +9,16 @@ table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
 REQUIRED_FIELDS = ["title", "description"]
 
+# CORS headers configuration
+# Note: In production, replace the Origin with our actual domain
+CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Max-Age": "86400"  # 24 hours
+}
+
 def lambda_handler(event, context):
     print("DEBUG EVENT:", json.dumps(event))
     try:
@@ -16,6 +26,7 @@ def lambda_handler(event, context):
         if "body" not in event:
             return {
                 "statusCode": 400,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Missing request body"})
             }
 
@@ -25,6 +36,7 @@ def lambda_handler(event, context):
         except json.JSONDecodeError:
             return {
                 "statusCode": 400,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Invalid JSON in request body"})
             }
 
@@ -33,6 +45,7 @@ def lambda_handler(event, context):
         if missing_fields:
             return {
                 "statusCode": 400,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": f"Missing fields: {', '.join(missing_fields)}"})
             }
 
@@ -40,6 +53,7 @@ def lambda_handler(event, context):
         if not body["description"].strip():
             return {
                 "statusCode": 400,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Description cannot be empty"})
             }
 
@@ -50,6 +64,7 @@ def lambda_handler(event, context):
         if not user_id:
             return {
                 "statusCode": 401,
+                "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Unauthorized - user_id not found"})
             }
 
@@ -74,11 +89,16 @@ def lambda_handler(event, context):
         # Return the job_id as a response
         return {
             "statusCode": 201,
+            "headers": {
+                **CORS_HEADERS,
+                "Content-Type": "application/json"
+            },
             "body": json.dumps({"job_id": job_id})
         }
 
     except Exception as e:
         return {
             "statusCode": 500,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"message": f"Internal server error: {str(e)}"})
         }
