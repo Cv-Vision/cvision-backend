@@ -1,7 +1,6 @@
 import os
 import json
 import base64
-import uuid
 import boto3
 import fitz
 import PIL.Image
@@ -9,7 +8,6 @@ from io import BytesIO
 from datetime import datetime
 import google.generativeai as genai
 
-# Configurations and environment variables
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 
@@ -21,14 +19,6 @@ results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
-
-
-def extract_text_from_pdf_bytes(pdf_bytes):
-    text = ""
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        for page in doc:
-            text += page.get_text()
-    return text
 
 
 def pdf_to_png_bytes(pdf_bytes):
@@ -131,11 +121,13 @@ def lambda_handler(event, context):
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
 
-        # Parse result
         parsed = json.loads(result_json)
 
-        # Save to S3
-        output_key = f"results/{job_id}/{recruiter_id}.json"
+        # Generate unique keys for recruiter and CV
+        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+
+        # Save result to S3
+        output_key = f"results/{job_id}/{recruiter_id}#{cv_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
@@ -143,10 +135,10 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        # Save to DynamoDB
+        # Save result to DynamoDB with unique keys
         results_table.put_item(Item={
             "pk": f"RESULT#{job_id}",
-            "sk": f"RECRUITER#{recruiter_id}",
+            "sk": f"RECRUITER#{recruiter_id}#CV#{cv_id}",
             "name": parsed["name"],
             "recruiter_id": recruiter_id,
             "score": parsed["score"],
