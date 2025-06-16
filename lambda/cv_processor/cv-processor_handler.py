@@ -90,9 +90,7 @@ def lambda_handler(event, context):
         prompt = f"""
     Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
-    A continuación se presentarán varios currículums, cada uno en el siguiente formato:
-
-    [recruiter_id] - [Texto del currículum]
+    A continuación se presentarán varios currículums.
 
     Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
     No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
@@ -101,7 +99,6 @@ def lambda_handler(event, context):
     Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
     {{
-      "recruiter_id": "...",
       "name" : ("nombre del candidato"),
       "score": [puntaje de 0 a 100],
       "reasons": [
@@ -157,7 +154,6 @@ def lambda_handler(event, context):
             "sk": f"RECRUITER#{recruiter_id}",
             "name": parsed["name"],
             "recruiter_id": recruiter_id,
-            "user_id": user_id,
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
