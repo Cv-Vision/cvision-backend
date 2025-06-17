@@ -30,6 +30,16 @@ CORS_HEADERS = {
 def sanitize_filename(name):
     return re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
 
+def get_content_type(filename: str) -> str:
+    ext = filename.lower().split('.')[-1]
+    mapping = {
+        "pdf": "application/pdf", # .pdf files
+        "jpg": "image/jpeg", # .jpg files
+        "jpeg": "image/jpeg", # .jpeg files
+        "png": "image/png" # .png files
+    }
+    return mapping.get(ext, "application/octet-stream")  # fallback to binary stream if unknown
+
 def validate_job_id(job_id, user_id):
     try:
         raw_job_id = job_id.replace("JD#", "") if job_id.startswith("JD#") else job_id
@@ -92,13 +102,14 @@ def lambda_handler(event, context):
         result = []
         for filename in filenames:
             safe_filename = sanitize_filename(filename)
+            content_type = get_content_type(safe_filename)
             key = f"uploads/{job_id}/{safe_filename}"
             url = s3.generate_presigned_url(
                 ClientMethod='put_object',
                 Params={
                     'Bucket': cv_bucket,
                     'Key': key,
-                    'ContentType': 'application/pdf'
+                    'ContentType': content_type,
                 },
                 ExpiresIn=3600
             )
