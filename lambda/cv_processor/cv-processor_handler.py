@@ -135,7 +135,9 @@ def lambda_handler(event, context):
                     }
                 }
             ],
-            generation_config={"response_mime_type": "application/json"},
+            generation_config={"response_mime_type": "application/json",
+                               "temperature": 0
+                               },
         )
 
         result_json = response.text
