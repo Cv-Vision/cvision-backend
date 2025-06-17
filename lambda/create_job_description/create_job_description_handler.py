@@ -88,7 +88,6 @@ def lambda_handler(event, context):
             "title": body["title"],
             "description": body["description"],
             "status": "ACTIVE",
-            "candidates": [],  # Initialize with an empty list
         }
 
         # Save the item in DynamoDB

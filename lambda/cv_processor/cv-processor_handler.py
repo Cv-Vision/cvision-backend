@@ -17,9 +17,29 @@ dynamodb = boto3.resource('dynamodb')
 
 job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
+job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
+
+def save_job_application(job_id, cv_id, name, output_s3_key):
+    pk = job_id
+    sk = f"CV#{cv_id}"
+
+    # Check if the application already exists
+    existing = job_applications_table.get_item(Key={"pk": pk, "sk": sk})
+    if "Item" not in existing:
+        item = {
+            "pk": pk,
+            "sk": sk,
+            "name": name,
+            "cv_s3_key": output_s3_key,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        job_applications_table.put_item(Item=item)
+        print(f"Aplicación guardada: job {job_id} - cv {cv_id}")
+    else:
+        print(f"Aplicación ya existe: job {job_id} - cv {cv_id}")
 
 # Function to calculate SHA-256 hash of file bytes -> this is to generate a unique identifier for the CV
 def calculate_sha256(file_bytes):
@@ -57,8 +77,12 @@ def lambda_handler(event, context):
         job_id = body["job_id"]
         user_id = body["user_id"]
 
-        # Generate cv_id based on file name (without extension)
-        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+        # Obtain CV from S3
+        response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
+        cv_bytes = response["Body"].read()
+
+        # Calculate cv_id SHA256 based on file bytes (unique identifier)
+        cv_id = calculate_sha256(cv_bytes)
 
         # Check if result already exists
         existing = results_table.get_item(Key={
@@ -76,10 +100,6 @@ def lambda_handler(event, context):
                     "recruiter_id": user_id
                 })
             }
-
-        # Obtain CV from S3
-        response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
-        cv_bytes = response["Body"].read()
 
         # Convert to PNG image
         ext = cv_key.lower().split('.')[-1]
@@ -151,9 +171,6 @@ def lambda_handler(event, context):
 
         parsed = json.loads(result_json)
 
-        # Generate unique keys for recruiter and CV
-        cv_id = calculate_sha256(cv_bytes)
-
         # Save result to S3
         output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
@@ -163,9 +180,9 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        # Save result to DynamoDB with unique keys
+        # Save result to DynamoDB
         results_table.put_item(Item={
-            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "pk": f"RESULT#{job_id}",
             "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
             "job_id": job_id,
             "name": parsed["name"],
@@ -175,6 +192,9 @@ def lambda_handler(event, context):
             "s3_key": output_key,
             "created_at": datetime.utcnow().isoformat()
         })
+
+        # Save job application to DynamoDB
+        save_job_application(job_id, cv_id, parsed.get("name"), output_key)
 
         return {
             "statusCode": 200,
