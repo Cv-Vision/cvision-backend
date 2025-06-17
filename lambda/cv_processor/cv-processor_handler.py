@@ -51,6 +51,26 @@ def lambda_handler(event, context):
         job_id = body["job_id"]
         user_id = body["user_id"]
 
+        # Generate cv_id based on file name (without extension)
+        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+
+        # Check if result already exists
+        existing = results_table.get_item(Key={
+            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
+        })
+        if "Item" in existing:
+            print("📦 Resultado ya existe. Se omite análisis.")
+            output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "Análisis ya existía. No se volvió a procesar.",
+                    "result_s3_path": f"s3://{results_bucket}/{output_key}",
+                    "recruiter_id": user_id
+                })
+            }
+
         # Obtain CV from S3
         response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
@@ -74,7 +94,7 @@ def lambda_handler(event, context):
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
 
         job_description = item["description"]
-        recruiter_id = user_id
+
 
         # Create prompt for Gemini
         prompt = f"""
@@ -127,7 +147,7 @@ def lambda_handler(event, context):
         cv_id = os.path.splitext(os.path.basename(cv_key))[0]
 
         # Save result to S3
-        output_key = f"results/{job_id}/{recruiter_id}#{cv_id}.json"
+        output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
@@ -137,10 +157,11 @@ def lambda_handler(event, context):
 
         # Save result to DynamoDB with unique keys
         results_table.put_item(Item={
-            "pk": f"RESULT#{job_id}",
-            "sk": f"RECRUITER#{recruiter_id}#CV#{cv_id}",
+            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
+            "job_id": job_id,
             "name": parsed["name"],
-            "recruiter_id": recruiter_id,
+            "recruiter_id": user_id,
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
@@ -152,7 +173,7 @@ def lambda_handler(event, context):
             "body": json.dumps({
                 "message": "Evaluación completada",
                 "result_s3_path": f"s3://{results_bucket}/{output_key}",
-                "recruiter_id": recruiter_id
+                "recruiter_id": user_id
             })
         }
 
