@@ -22,7 +22,7 @@ job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
-def save_job_application(job_id, cv_id, name, cv_s3_key):
+def save_job_application(job_id, cv_id, name, output_s3_key):
     pk = f"JOB#{job_id}"
     sk = f"CV#{cv_id}"
 
@@ -33,7 +33,7 @@ def save_job_application(job_id, cv_id, name, cv_s3_key):
             "pk": pk,
             "sk": sk,
             "name": name,
-            "cv_s3_key": cv_s3_key,
+            "cv_s3_key": output_s3_key,
             "created_at": datetime.utcnow().isoformat()
         }
         job_applications_table.put_item(Item=item)
@@ -194,7 +194,7 @@ def lambda_handler(event, context):
         })
 
         # Save job application to DynamoDB
-        save_job_application(job_id, cv_id, parsed.get("name"), cv_key)
+        save_job_application(job_id, cv_id, parsed.get("name"), output_key)
 
         # Update job posting to add cv_id
         job_posting = job_table.get_item(Key={
