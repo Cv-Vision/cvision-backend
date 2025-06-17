@@ -7,6 +7,7 @@ import PIL.Image
 from io import BytesIO
 from datetime import datetime
 import google.generativeai as genai
+import hashlib
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
@@ -20,6 +21,11 @@ results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
+# Function to calculate SHA-256 hash of file bytes -> this is to generate a unique identifier for the CV
+def calculate_sha256(file_bytes):
+    sha256_hash = hashlib.sha256()
+    sha256_hash.update(file_bytes)
+    return sha256_hash.hexdigest()
 
 def pdf_to_png_bytes(pdf_bytes):
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
@@ -146,7 +152,7 @@ def lambda_handler(event, context):
         parsed = json.loads(result_json)
 
         # Generate unique keys for recruiter and CV
-        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+        cv_id = calculate_sha256(cv_bytes)
 
         # Save result to S3
         output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
