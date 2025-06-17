@@ -35,10 +35,8 @@ def lambda_handler(event, context):
     try:
         print("🔍 Event:", event)
 
-        # Get job_id from query parameters or body
-        job_id = event.get("queryStringParameters", {}).get("job_id") \
-            or json.loads(event["body"]).get("job_id")
-
+        # ✅ Extract job_id from the path parameters
+        job_id = event.get("pathParameters", {}).get("job_id")
         if not job_id:
             return {
                 "statusCode": 400,
