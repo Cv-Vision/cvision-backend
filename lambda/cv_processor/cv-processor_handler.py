@@ -23,7 +23,7 @@ cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
 def save_job_application(job_id, cv_id, name, output_s3_key):
-    pk = f"JOB#{job_id}"
+    pk = job_id
     sk = f"CV#{cv_id}"
 
     # Check if the application already exists
@@ -182,7 +182,7 @@ def lambda_handler(event, context):
 
         # Save result to DynamoDB
         results_table.put_item(Item={
-            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "pk": f"RESULT#{job_id}",
             "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
             "job_id": job_id,
             "name": parsed["name"],
@@ -195,27 +195,6 @@ def lambda_handler(event, context):
 
         # Save job application to DynamoDB
         save_job_application(job_id, cv_id, parsed.get("name"), output_key)
-
-        # Update job posting to add cv_id
-        job_posting = job_table.get_item(Key={
-            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
-            "sk": f"USER#{user_id}"
-        }).get("Item")
-
-        if job_posting:
-            candidates = job_posting.get("candidates", [])
-            if cv_id not in candidates:
-                candidates.append(cv_id)
-                job_table.update_item(
-                    Key={"pk": job_posting["pk"], "sk": job_posting["sk"]},
-                    UpdateExpression="SET candidates = :candidates",
-                    ExpressionAttributeValues={":candidates": candidates}
-                )
-                print(f"Aplicación {cv_id} agregado a JobPosting {job_id}")
-            else:
-                print(f"Aplicación {cv_id} ya estaba en JobPosting {job_id}")
-        else:
-            print(f"JobPosting {job_id} no encontrado para actualizar aplicaciones.")
 
         return {
             "statusCode": 200,
