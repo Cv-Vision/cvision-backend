@@ -105,7 +105,7 @@ def lambda_handler(event, context):
     Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
     No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
     Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
-
+    También debes identificar posibles habilidades blandas que el candidato pueda tener, solo si están explícita o claramente inferidas a partir de su experiencia o logros.
     Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
     {{
