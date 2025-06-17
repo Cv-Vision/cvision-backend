@@ -77,14 +77,14 @@ def lambda_handler(event, context):
         job_id = body["job_id"]
         user_id = body["user_id"]
 
-        # Obtain CV from S3
+        # Get CV from S3
         response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
 
         # Calculate cv_id SHA256 based on file bytes (unique identifier)
         cv_id = calculate_sha256(cv_bytes)
 
-        # Check if result already exists
+        # Check if a result already exists
         existing = results_table.get_item(Key={
             "pk": f"RESULT#{job_id}#CV#{cv_id}",
             "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
