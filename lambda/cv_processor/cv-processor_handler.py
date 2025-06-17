@@ -1,7 +1,6 @@
 import os
 import json
 import base64
-import uuid
 import boto3
 import fitz
 import PIL.Image
@@ -9,7 +8,6 @@ from io import BytesIO
 from datetime import datetime
 import google.generativeai as genai
 
-# Configurations and environment variables
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 
@@ -21,14 +19,6 @@ results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
-
-
-def extract_text_from_pdf_bytes(pdf_bytes):
-    text = ""
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        for page in doc:
-            text += page.get_text()
-    return text
 
 
 def pdf_to_png_bytes(pdf_bytes):
@@ -61,6 +51,26 @@ def lambda_handler(event, context):
         job_id = body["job_id"]
         user_id = body["user_id"]
 
+        # Generate cv_id based on file name (without extension)
+        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+
+        # Check if result already exists
+        existing = results_table.get_item(Key={
+            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
+        })
+        if "Item" in existing:
+            print("📦 Resultado ya existe. Se omite análisis.")
+            output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "Análisis ya existía. No se volvió a procesar.",
+                    "result_s3_path": f"s3://{results_bucket}/{output_key}",
+                    "recruiter_id": user_id
+                })
+            }
+
         # Obtain CV from S3
         response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
@@ -76,7 +86,7 @@ def lambda_handler(event, context):
 
         # Get job description from DynamoDB
         result = job_table.get_item(Key={
-            "pk": f"JD#{job_id}",
+            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
             "sk": f"USER#{user_id}"
         })
         item = result.get("Item")
@@ -84,24 +94,22 @@ def lambda_handler(event, context):
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
 
         job_description = item["description"]
-        participant_id = str(uuid.uuid4())
+
 
         # Create prompt for Gemini
         prompt = f"""
     Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
-    A continuación se presentarán varios currículums, cada uno en el siguiente formato:
-
-    [participant_id] - [Texto del currículum]
+    A continuación se presentarán varios currículums.
 
     Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
     No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
     Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
-
+    También debes identificar posibles habilidades blandas que el candidato pueda tener, solo si están explícita o claramente inferidas a partir de su experiencia o logros.
     Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
     {{
-      "participant_id": "...",
+      "name" : ("nombre del candidato"),
       "score": [puntaje de 0 a 100],
       "reasons": [
         "razón 1",
@@ -127,22 +135,21 @@ def lambda_handler(event, context):
                     }
                 }
             ],
-            generation_config={"response_mime_type": "application/json"},
+            generation_config={"response_mime_type": "application/json",
+                               "temperature": 0
+                               },
         )
 
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
 
-        # Parse result
         parsed = json.loads(result_json)
-        if not all(k in parsed for k in ["participant_id", "score", "reasons"]):
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
-            }
 
-        # Save to S3
-        output_key = f"results/{job_id}/{participant_id}.json"
+        # Generate unique keys for recruiter and CV
+        cv_id = os.path.splitext(os.path.basename(cv_key))[0]
+
+        # Save result to S3
+        output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
@@ -150,12 +157,13 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        # Save to DynamoDB
+        # Save result to DynamoDB with unique keys
         results_table.put_item(Item={
-            "pk": f"JOB#{job_id}",
-            "sk": f"PARTICIPANT#{participant_id}",
-            "participant_id": participant_id,
-            "user_id": user_id,
+            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
+            "job_id": job_id,
+            "name": parsed["name"],
+            "recruiter_id": user_id,
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
@@ -167,7 +175,7 @@ def lambda_handler(event, context):
             "body": json.dumps({
                 "message": "Evaluación completada",
                 "result_s3_path": f"s3://{results_bucket}/{output_key}",
-                "participant_id": participant_id
+                "recruiter_id": user_id
             })
         }
 
