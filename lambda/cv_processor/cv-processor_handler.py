@@ -197,6 +197,8 @@ def lambda_handler(event, context):
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
 
+        parsed = json.loads(result_json)
+
         # If it's a list, take the first element or process each one
         if isinstance(parsed, list):
             parsed = parsed[0]
