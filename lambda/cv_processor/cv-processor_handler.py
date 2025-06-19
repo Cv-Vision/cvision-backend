@@ -121,34 +121,63 @@ def lambda_handler(event, context):
 
         job_description = item["description"]
 
+        # Extraer los requisitos opcionales
+        experience_level = item.get("experience_level")
+        english_level = item.get("english_level")
+        industry_experience = item.get("industry_experience")
+        contract_type = item.get("contract_type")
+        additional_requirements = item.get("additional_requirements")
 
-        # Create prompt for Gemini
+        # Crear una sección de requisitos adicionales para el prompt
+        additional_requirements_text = ""
+
+        if experience_level:
+            additional_requirements_text += f"\nNivel de experiencia requerido: {experience_level}"
+
+        if english_level:
+            additional_requirements_text += f"\nNivel de inglés requerido: {english_level}"
+
+        if industry_experience:
+            if industry_experience.get("required", False):
+                industry = industry_experience.get("industry", "")
+                additional_requirements_text += f"\nExperiencia en la industria requerida: {industry}"
+            else:
+                additional_requirements_text += "\nNo se requiere experiencia específica en la industria."
+
+        if contract_type:
+            additional_requirements_text += f"\nTipo de contrato: {contract_type}"
+
+        if additional_requirements:
+            additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
+
+        # Modificar el prompt para incluir los requisitos opcionales (línea 126-151)
         prompt = f"""
-    Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
+        Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
-    A continuación se presentarán varios currículums.
+        A continuación se presentarán varios currículums.
 
-    Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
-    No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
-    Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
-    También debes identificar posibles habilidades blandas que el candidato pueda tener, solo si están explícita o claramente inferidas a partir de su experiencia o logros.
-    Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
+        Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto y los requisitos adicionales especificados.
+        Hay que seguir al pie de la letra lo que dice la descripción del puesto y los requisitos adicionales, y en base a eso evaluar el currículum.
+        También debes identificar posibles habilidades blandas que el candidato pueda tener, solo si están explícita o claramente inferidas a partir de su experiencia o logros.
+        Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
-    {{
-      "name" : ("nombre del candidato"),
-      "score": [puntaje de 0 a 100],
-      "reasons": [
-        "razón 1",
-        "razón 2",
-        ...
-      ]
-    }}
+        {{
+          "name" : ("nombre del candidato"),
+          "score": [puntaje de 0 a 100],
+          "reasons": [
+            "razón 1",
+            "razón 2",
+            ...
+          ]
+        }}
 
-    Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
+        Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
 
-    Descripción del puesto:
-    {job_description}
-    """
+        Descripción del puesto:
+        {job_description}
+
+        Requisitos adicionales:{additional_requirements_text}
+        """
 
         # Call Gemini
         response = model.generate_content(
