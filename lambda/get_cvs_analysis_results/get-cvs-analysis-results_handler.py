@@ -77,7 +77,7 @@ def lambda_handler(event, context):
     try:
         results = cv_results_table.query(
             KeyConditionExpression="pk = :pk",
-            ExpressionAttributeValues={":pk": f"JOB#{job_id}"}
+            ExpressionAttributeValues={":pk": f"RESULT#JD#{job_id}"}
         )
         items = results.get("Items", [])
 
