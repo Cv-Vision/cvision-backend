@@ -28,11 +28,6 @@ CORS_HEADERS = {
 
 
 # Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
-
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
@@ -53,6 +48,15 @@ def lambda_handler(event, context):
         }
 
     try:
+        # Extract job_id from path parameters
+        job_id = event.get("pathParameters", {}).get("job_id")
+        if not job_id:
+            return {
+                "statusCode": 400,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"message": "Missing job_id in path parameters"})
+            }
+
         # Verify that the event has a body
         if "body" not in event:
             return {
@@ -71,14 +75,6 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Invalid JSON in request body"})
             }
 
-        # Validate required fields
-        if "job_id" not in body:
-            return {
-                "statusCode": 400,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "Missing job_id field"})
-            }
-
         # Check if at least one of description or status is provided
         if "description" not in body and "status" not in body:
             return {
@@ -95,7 +91,6 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Description cannot be empty"})
             }
 
-        job_id = body["job_id"]
         new_description = body.get("description")
         new_status = body.get("status")
 
