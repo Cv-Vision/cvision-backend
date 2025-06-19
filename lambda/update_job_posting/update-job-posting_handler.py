@@ -20,6 +20,29 @@ class JobStatus(str, Enum):
     DELETED = "DELETED"
 
 
+# === ENUMS for structured requirements ===
+class ExperienceLevel(str, Enum):
+    JUNIOR = "JUNIOR"
+    SEMISENIOR = "SEMISENIOR"
+    SENIOR = "SENIOR"
+
+
+class EnglishLevel(str, Enum):
+    BASIC = "BASIC"
+    INTERMEDIATE = "INTERMEDIATE"
+    ADVANCED = "ADVANCED"
+    NATIVE = "NATIVE"
+    NOT_REQUIRED = "NOT_REQUIRED"
+
+
+class ContractType(str, Enum):
+    FULL_TIME = "FULL_TIME"
+    PART_TIME = "PART_TIME"
+    CONTRACT = "CONTRACT"
+    FREELANCE = "FREELANCE"
+    INTERNSHIP = "INTERNSHIP"
+
+
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
@@ -82,24 +105,91 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Invalid JSON in request body"})
             }
 
-        # Check if at least one of description or status is provided
-        if "description" not in body and "status" not in body:
+        # Check if at least one field is provided for update
+        if not any(key in body for key in ["description", "status", "experience_level",
+                                           "english_level", "industry_experience",
+                                           "contract_type", "additional_requirements"]):
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "At least one of description or status must be provided"})
+                "body": json.dumps({"message": "At least one field must be provided for update"})
             }
 
+        # Extract all fields from the request body
+        new_description = body.get("description")
+        new_status = body.get("status")
+        new_experience_level = body.get("experience_level")
+        new_english_level = body.get("english_level")
+        new_industry_experience = body.get("industry_experience")
+        new_contract_type = body.get("contract_type")
+        new_additional_requirements = body.get("additional_requirements")
+
         # Validate description is not empty if provided
-        if "description" in body and not body["description"].strip():
+        if new_description is not None and not new_description.strip():
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Description cannot be empty"})
             }
 
-        new_description = body.get("description")
-        new_status = body.get("status")
+        # Validate experience_level if provided
+        if new_experience_level is not None:
+            try:
+                ExperienceLevel(new_experience_level)  # This will raise ValueError if invalid
+            except ValueError:
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": f"Invalid experience level value: {new_experience_level}"})
+                }
+
+        # Validate english_level if provided
+        if new_english_level is not None:
+            try:
+                EnglishLevel(new_english_level)  # This will raise ValueError if invalid
+            except ValueError:
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": f"Invalid English level value: {new_english_level}"})
+                }
+
+        # Validate industry_experience if provided
+        if new_industry_experience is not None:
+            if not isinstance(new_industry_experience, dict):
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({
+                                           "message": "Industry experience must be an object with 'required' and optional 'industry' fields"})
+                }
+
+            if "required" not in new_industry_experience or not isinstance(new_industry_experience["required"], bool):
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": "Industry experience must include a boolean 'required' field"})
+                }
+
+            if new_industry_experience["required"] and (
+                    "industry" not in new_industry_experience or not new_industry_experience["industry"].strip()):
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps(
+                        {"message": "When industry experience is required, the 'industry' field must be provided"})
+                }
+
+        # Validate contract_type if provided
+        if new_contract_type is not None:
+            try:
+                ContractType(new_contract_type)  # This will raise ValueError if invalid
+            except ValueError:
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": f"Invalid contract type value: {new_contract_type}"})
+                }
 
         # Check if the job posting exists and belongs to the user
         try:
@@ -142,20 +232,50 @@ def lambda_handler(event, context):
                         "body": json.dumps({"message": f"Invalid status value: {new_status}"})
                     }
 
+            # Add experience_level update if provided
+            if new_experience_level is not None:
+                update_parts.append("experience_level = :experience_level")
+                expression_attribute_values[":experience_level"] = new_experience_level
+
+            # Add english_level update if provided
+            if new_english_level is not None:
+                update_parts.append("english_level = :english_level")
+                expression_attribute_values[":english_level"] = new_english_level
+
+            # Add industry_experience update if provided
+            if new_industry_experience is not None:
+                update_parts.append("industry_experience = :industry_experience")
+                expression_attribute_values[":industry_experience"] = new_industry_experience
+
+            # Add contract_type update if provided
+            if new_contract_type is not None:
+                update_parts.append("contract_type = :contract_type")
+                expression_attribute_values[":contract_type"] = new_contract_type
+
+            # Add additional_requirements update if provided
+            if new_additional_requirements is not None:
+                update_parts.append("additional_requirements = :additional_requirements")
+                expression_attribute_values[":additional_requirements"] = new_additional_requirements
+
             # Build the update expression
             update_expression = "SET " + ", ".join(update_parts)
 
             # Update the job posting
-            update_response = table.update_item(
-                Key={
+            update_params = {
+                "Key": {
                     "pk": f"JD#{job_id}",
                     "sk": f"USER#{user_id}"
                 },
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_attribute_values,
-                ExpressionAttributeNames=expression_attribute_names if expression_attribute_names else None,
-                ReturnValues="ALL_NEW"
-            )
+                "UpdateExpression": update_expression,
+                "ExpressionAttributeValues": expression_attribute_values,
+                "ReturnValues": "ALL_NEW"
+            }
+
+            # Only include ExpressionAttributeNames if it's not empty
+            if expression_attribute_names:
+                update_params["ExpressionAttributeNames"] = expression_attribute_names
+
+            update_response = table.update_item(**update_params)
 
             updated_item = update_response.get("Attributes", {})
 
