@@ -84,7 +84,6 @@ def lambda_handler(event, context):
         # Format the results to include only the necessary fields
         formatted = [
             {
-                "user_id": user_id,
                 "job_id": job_id,
                 "score": item.get("score"),
                 "reasons": item.get("reasons", []),
