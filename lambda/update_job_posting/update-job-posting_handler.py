@@ -105,14 +105,12 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Invalid JSON in request body"})
             }
 
-        # Check if at least one field is provided for update
-        if not any(key in body for key in ["description", "status", "experience_level",
-                                           "english_level", "industry_experience",
-                                           "contract_type", "additional_requirements"]):
+        # Allow updating any field in the body
+        if not body:
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "At least one field must be provided for update"})
+                "body": json.dumps({"message": "Request body cannot be empty"})
             }
 
         # Extract all fields from the request body
