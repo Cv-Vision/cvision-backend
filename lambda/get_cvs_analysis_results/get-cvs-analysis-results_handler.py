@@ -77,14 +77,14 @@ def lambda_handler(event, context):
     try:
         results = cv_results_table.query(
             KeyConditionExpression="pk = :pk",
-            ExpressionAttributeValues={":pk": f"JOB#{job_id}"}
+            ExpressionAttributeValues={":pk": f"RESULT#JD#{job_id}"}
         )
         items = results.get("Items", [])
 
         # Format the results to include only the necessary fields
         formatted = [
             {
-                "participant_id": item["participant_id"],
+                "job_id": job_id,
                 "score": item.get("score"),
                 "reasons": item.get("reasons", []),
                 "created_at": item.get("created_at")
