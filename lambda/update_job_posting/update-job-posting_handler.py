@@ -5,6 +5,13 @@ import decimal
 from enum import Enum
 
 
+# Method to handle decimal serialization for JSON
+def decimal_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    raise TypeError
+
+
 # === ENUM for job status ===
 class JobStatus(str, Enum):
     ACTIVE = "ACTIVE"
