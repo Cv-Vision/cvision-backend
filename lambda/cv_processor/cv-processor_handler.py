@@ -121,14 +121,14 @@ def lambda_handler(event, context):
 
         job_description = item["description"]
 
-        # Extraer los requisitos opcionales
+        # Extract optional requirements
         experience_level = item.get("experience_level")
         english_level = item.get("english_level")
         industry_experience = item.get("industry_experience")
         contract_type = item.get("contract_type")
         additional_requirements = item.get("additional_requirements")
 
-        # Crear una sección de requisitos adicionales para el prompt
+        # Create a section of optional requirements for the prompt
         additional_requirements_text = ""
 
         if experience_level:
@@ -149,8 +149,7 @@ def lambda_handler(event, context):
 
         if additional_requirements:
             additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
-
-        # Modificar el prompt para incluir los requisitos opcionales (línea 126-151)
+            
         prompt = f"""
         Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
