@@ -261,16 +261,21 @@ def lambda_handler(event, context):
             update_expression = "SET " + ", ".join(update_parts)
 
             # Update the job posting
-            update_response = table.update_item(
-                Key={
+            update_params = {
+                "Key": {
                     "pk": f"JD#{job_id}",
                     "sk": f"USER#{user_id}"
                 },
-                UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_attribute_values,
-                ExpressionAttributeNames=expression_attribute_names if expression_attribute_names else {},
-                ReturnValues="ALL_NEW"
-            )
+                "UpdateExpression": update_expression,
+                "ExpressionAttributeValues": expression_attribute_values,
+                "ReturnValues": "ALL_NEW"
+            }
+
+            # Only include ExpressionAttributeNames if it's not empty
+            if expression_attribute_names:
+                update_params["ExpressionAttributeNames"] = expression_attribute_names
+
+            update_response = table.update_item(**update_params)
 
             updated_item = update_response.get("Attributes", {})
 
