@@ -85,6 +85,7 @@ def lambda_handler(event, context):
         formatted = [
             {
                 "job_id": job_id,
+                "name": item.get("name"),
                 "score": item.get("score"),
                 "reasons": item.get("reasons", []),
                 "created_at": item.get("created_at")
