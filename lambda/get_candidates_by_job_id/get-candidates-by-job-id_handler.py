@@ -2,6 +2,7 @@ import os
 import json
 import boto3
 from boto3.dynamodb.conditions import Key
+import decimal
 
 dynamodb = boto3.resource("dynamodb")
 job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
@@ -15,6 +16,12 @@ CORS_HEADERS = {
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400"  # 24 hours
 }
+
+# Method to handle decimal serialization for JSON
+def decimal_default(obj):
+    if isinstance(obj, decimal.Decimal):
+        return float(obj)
+    raise TypeError
 
 def lambda_handler(event, context):
     # Handle CORS preflight request
@@ -57,7 +64,8 @@ def lambda_handler(event, context):
                 "cv_id": item["sk"].replace("CV#", ""),
                 "name": item.get("name"),
                 "cv_s3_key": item.get("cv_s3_key"),
-                "created_at": item.get("created_at")
+                "created_at": item.get("created_at"),
+                "score": item.get("score")
             })
 
         return {
@@ -66,7 +74,9 @@ def lambda_handler(event, context):
                 **CORS_HEADERS,
                 "Content-Type": "application/json"
             },
-            "body": json.dumps({"job_id": job_id, "candidates": candidates})
+            "body": json.dumps(
+                {"job_id": job_id, "candidates": candidates},
+                default=decimal_default)
         }
 
     except Exception as e:
