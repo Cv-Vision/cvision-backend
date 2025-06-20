@@ -8,7 +8,6 @@ from io import BytesIO
 from datetime import datetime
 import google.generativeai as genai
 import hashlib
-import decimal
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
@@ -22,12 +21,6 @@ job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
-
-# Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
 
 def save_job_application(job_id, cv_id, name, output_s3_key, score):
     pk = job_id
@@ -106,7 +99,7 @@ def lambda_handler(event, context):
                     "message": "Análisis ya existía. No se volvió a procesar.",
                     "result_s3_path": f"s3://{results_bucket}/{output_key}",
                     "recruiter_id": user_id
-                }, default=decimal_default)
+                })
             }
 
         # Convert to PNG image
@@ -242,7 +235,7 @@ def lambda_handler(event, context):
                 "message": "Evaluación completada",
                 "result_s3_path": f"s3://{results_bucket}/{output_key}",
                 "recruiter_id": user_id
-            }, default=decimal_default)
+            })
         }
 
     except Exception as e:
