@@ -57,7 +57,8 @@ def lambda_handler(event, context):
                 "cv_id": item["sk"].replace("CV#", ""),
                 "name": item.get("name"),
                 "cv_s3_key": item.get("cv_s3_key"),
-                "created_at": item.get("created_at")
+                "created_at": item.get("created_at"),
+                "score": item.get("score")
             })
 
         return {
