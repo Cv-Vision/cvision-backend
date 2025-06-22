@@ -65,7 +65,8 @@ def lambda_handler(event, context):
                 "name": item.get("name"),
                 "cv_s3_key": item.get("cv_s3_key"),
                 "created_at": item.get("created_at"),
-                "score": item.get("score")
+                "score": item.get("score"),
+                "valoracion": item.get("valoracion")
             })
 
         return {
