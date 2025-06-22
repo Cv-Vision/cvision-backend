@@ -204,6 +204,8 @@ def lambda_handler(event, context):
         if isinstance(parsed, list):
             parsed = parsed[0]
 
+        parsed["name"] = parsed["name"].title()
+
         # Save result to S3
         output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
