@@ -150,6 +150,8 @@ def lambda_handler(event, context):
 
         if additional_requirements:
             additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
+
+        print('Requisitos adicionales: ', additional_requirements_text)
             
         prompt = f"""
         Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
