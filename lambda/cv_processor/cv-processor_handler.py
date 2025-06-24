@@ -23,24 +23,26 @@ cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
 def save_job_application(job_id, cv_id, name, output_s3_key, score):
-    pk = job_id
+    pk = f"JD#{job_id}" if not job_id.startswith("JD#") else job_id
     sk = f"CV#{cv_id}"
 
-    # Check if the application already exists
-    existing = job_applications_table.get_item(Key={"pk": pk, "sk": sk})
-    if "Item" not in existing:
-        item = {
-            "pk": pk,
-            "sk": sk,
-            "name": name,
-            "cv_s3_key": output_s3_key,
-            "score": score,
-            "created_at": datetime.utcnow().isoformat()
-        }
-        job_applications_table.put_item(Item=item)
-        print(f"Aplicación guardada: job {job_id} - cv {cv_id}")
-    else:
-        print(f"Aplicación ya existe: job {job_id} - cv {cv_id}")
+    try:
+        print(f"💾 Guardando/actualizando JobApplication para {pk} - {sk}")
+        job_applications_table.update_item(
+            Key={"pk": pk, "sk": sk},
+            UpdateExpression="SET #n = :name, cv_s3_key = :s3key, score = :score, created_at = :created",
+            ExpressionAttributeNames={"#n": "name"},
+            ExpressionAttributeValues={
+                ":name": name,
+                ":s3key": output_s3_key,
+                ":score": score,
+                ":created": datetime.utcnow().isoformat()
+            }
+        )
+        print("✅ JobApplication actualizado")
+    except Exception as e:
+        print("❌ Error al guardar JobApplication:", str(e))
+
 
 # Function to calculate SHA-256 hash of file bytes -> this is to generate a unique identifier for the CV
 def calculate_sha256(file_bytes):
