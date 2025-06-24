@@ -85,7 +85,7 @@ def lambda_handler(event, context):
             try:
                 job_applications_table.update_item(
                     Key=application_key,
-                    UpdateExpression="REMOVE cv_s3_key"
+                    UpdateExpression="REMOVE cv_s3_key, score"
                 )
             except Exception as e:
                 print(f"❌ Failed to update JobApplications: {str(e)}")
