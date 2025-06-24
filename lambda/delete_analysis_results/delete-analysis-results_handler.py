@@ -66,7 +66,7 @@ def lambda_handler(event, context):
             print(f"--- 🔄 Processing cv_id: {cv_id} ---")
             result_pk = f"RESULT#JD#{job_id}"
             result_sk = f"RECRUITER#{user_id}#CV#{cv_id}"
-            s3_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            s3_key = f"results/JD#{job_id}/{user_id}#{cv_id}.json"
             application_key = {"pk": f"JD#{job_id}", "sk": f"CV#{cv_id}"}
 
             print(f"🗑️ Deleting DynamoDB item from CV_ANALYSIS_RESULTS_TABLE: {result_pk}, {result_sk}")
