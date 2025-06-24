@@ -62,12 +62,25 @@ def lambda_handler(event, context):
             return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Missing cv_ids in request body"})}
 
         deleted = []
+        not_found = []
+        print("🔄 Starting deletion process for CVs:", cv_ids)
         for cv_id in cv_ids:
             print(f"--- 🔄 Processing cv_id: {cv_id} ---")
             result_pk = f"RESULT#JD#{job_id}"
             result_sk = f"RECRUITER#{user_id}#CV#{cv_id}"
             s3_key = f"results/JD#{job_id}/{user_id}#{cv_id}.json"
             application_key = {"pk": f"JD#{job_id}", "sk": f"CV#{cv_id}"}
+
+            print(f"🔑 Checking if result exists in DynamoDB: {result_pk}, {result_sk}")
+            try:
+                result_check = results_table.get_item(Key={"pk": result_pk, "sk": result_sk})
+                if "Item" not in result_check:
+                    print(f"⚠️ No se encontró análisis para cv_id {cv_id}, se omite")
+                    not_found.append(cv_id)
+                    continue
+                print("✅ Análisis encontrado")
+            except Exception as e:
+                print(f"❌ Error verificando existencia en DynamoDB: {str(e)}")
 
             print(f"🗑️ Deleting DynamoDB item from CV_ANALYSIS_RESULTS_TABLE: {result_pk}, {result_sk}")
             try:
@@ -91,6 +104,13 @@ def lambda_handler(event, context):
                 print(f"❌ Failed to update JobApplications: {str(e)}")
 
             deleted.append(cv_id)
+            if not deleted:
+                return {
+                    "statusCode": 404,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps(
+                        {"message": "No analysis results found for given cv_ids", "not_found": not_found})
+                }
 
         print("✅ All done. Deleted CVs:", deleted)
         return {
