@@ -22,52 +22,77 @@ CORS_HEADERS = {
 }
 
 def lambda_handler(event, context):
+    print("📥 Event received:", json.dumps(event))
+
     if event.get("httpMethod") == "OPTIONS":
+        print("🟡 Preflight OPTIONS request")
         return {"statusCode": 204, "headers": CORS_HEADERS}
 
     path_params = event.get("pathParameters") or {}
     job_id = path_params.get("job_id")
+    print("🔎 job_id:", job_id)
     if not job_id:
         return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Missing job_id"})}
 
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
+    print("🔐 user_id (from token):", user_id)
     if not user_id:
         return {"statusCode": 401, "headers": CORS_HEADERS, "body": json.dumps({"message": "Unauthorized"})}
 
+    # Verify ownership of the job posting
     try:
-        response = job_postings_table.get_item(Key={"pk": f"JD#{job_id}", "sk": f"USER#{user_id}"})
+        job_key = {"pk": f"JD#{job_id}", "sk": f"USER#{user_id}"}
+        print("🔍 Checking ownership with key:", job_key)
+        response = job_postings_table.get_item(Key=job_key)
         if "Item" not in response:
+            print("❌ Ownership check failed - job not found")
             return {"statusCode": 403, "headers": CORS_HEADERS, "body": json.dumps({"message": "You do not own this job posting"})}
+        print("✅ Ownership confirmed")
     except Exception as e:
+        print("❌ Exception in ownership check:", str(e))
         return {"statusCode": 500, "headers": CORS_HEADERS, "body": json.dumps({"error": f"Ownership check failed: {str(e)}"})}
 
+    # Process the request to delete CV analysis results
     try:
         body = json.loads(event.get("body") or "{}")
         cv_ids = body.get("cv_ids", [])
+        print("🧾 CV IDs to delete:", cv_ids)
         if not cv_ids:
             return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Missing cv_ids in request body"})}
 
         deleted = []
         for cv_id in cv_ids:
-            result_pk = f"RESULT#{job_id}"
+            print(f"--- 🔄 Processing cv_id: {cv_id} ---")
+            result_pk = f"RESULT#JD#{job_id}"
             result_sk = f"RECRUITER#{user_id}#CV#{cv_id}"
             s3_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            application_key = {"pk": f"JD#{job_id}", "sk": f"CV#{cv_id}"}
 
-            # Delete from CV_ANALYSIS_RESULTS_TABLE
-            results_table.delete_item(Key={"pk": result_pk, "sk": result_sk})
+            print(f"🗑️ Deleting DynamoDB item from CV_ANALYSIS_RESULTS_TABLE: {result_pk}, {result_sk}")
+            try:
+                results_table.delete_item(Key={"pk": result_pk, "sk": result_sk})
+            except Exception as e:
+                print(f"❌ Failed to delete from CV_ANALYSIS_RESULTS_TABLE: {str(e)}")
 
-            # Delete object from S3
-            s3.delete_object(Bucket=results_bucket, Key=s3_key)
+            print(f"🧹 Deleting S3 object: {s3_key}")
+            try:
+                s3.delete_object(Bucket=results_bucket, Key=s3_key)
+            except Exception as e:
+                print(f"❌ Failed to delete from S3: {str(e)}")
 
-            # Remove cv_s3_key from JobApplications
-            job_applications_table.update_item(
-                Key={"pk": f"JD#{job_id}", "sk": f"CV#{cv_id}"},
-                UpdateExpression="REMOVE cv_s3_key"
-            )
+            print(f"✂️ Removing cv_s3_key from JobApplications for {application_key}")
+            try:
+                job_applications_table.update_item(
+                    Key=application_key,
+                    UpdateExpression="REMOVE cv_s3_key"
+                )
+            except Exception as e:
+                print(f"❌ Failed to update JobApplications: {str(e)}")
 
             deleted.append(cv_id)
 
+        print("✅ All done. Deleted CVs:", deleted)
         return {
             "statusCode": 200,
             "headers": {**CORS_HEADERS, "Content-Type": "application/json"},
@@ -75,6 +100,7 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
+        print("❌ General exception:", str(e))
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
