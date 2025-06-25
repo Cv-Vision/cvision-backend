@@ -22,7 +22,7 @@ job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
-def save_job_application(job_id, cv_id, name, output_s3_key, score):
+def save_job_application(job_id, cv_id, name, output_s3_key, score, upload_key):
     pk = f"JD#{job_id}" if not job_id.startswith("JD#") else job_id
     sk = f"CV#{cv_id}"
 
@@ -30,11 +30,18 @@ def save_job_application(job_id, cv_id, name, output_s3_key, score):
         print(f"💾 Guardando/actualizando JobApplication para {pk} - {sk}")
         job_applications_table.update_item(
             Key={"pk": pk, "sk": sk},
-            UpdateExpression="SET #n = :name, cv_s3_key = :s3key, score = :score, created_at = :created",
+            UpdateExpression="""
+                SET #n = :name,
+                    cv_s3_key = :s3key,
+                    cv_upload_key = :uploadkey,
+                    score = :score,
+                    created_at = :created
+            """,
             ExpressionAttributeNames={"#n": "name"},
             ExpressionAttributeValues={
                 ":name": name,
                 ":s3key": output_s3_key,
+                ":uploadkey": upload_key,
                 ":score": score,
                 ":created": datetime.utcnow().isoformat()
             }
@@ -49,6 +56,7 @@ def calculate_sha256(file_bytes):
     sha256_hash = hashlib.sha256()
     sha256_hash.update(file_bytes)
     return sha256_hash.hexdigest()
+
 
 def pdf_to_png_bytes(pdf_bytes):
     with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
@@ -152,7 +160,7 @@ def lambda_handler(event, context):
 
         if additional_requirements:
             additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
-            
+
         prompt = f"""
         Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
@@ -231,7 +239,7 @@ def lambda_handler(event, context):
         })
 
         # Save job application to DynamoDB
-        save_job_application(job_id, cv_id, parsed.get("name"), output_key, parsed.get("score"))
+        save_job_application(job_id, cv_id, parsed.get("name"), output_key, parsed.get("score"), cv_key)
 
         return {
             "statusCode": 200,
