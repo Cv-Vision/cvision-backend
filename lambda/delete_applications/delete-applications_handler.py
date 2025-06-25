@@ -59,7 +59,6 @@ def lambda_handler(event, context):
 
             # Delete S3 object
             s3_key = f"results/JD#{job_id}/{user_id}#{cv_id}.json"
-            s3_key_upload = f"uploads/JD#{job_id}/{user_id}#{cv_id}.json"
             try:
                 print(f"🧹 Deleting from S3: {s3_key}")
                 s3.delete_object(Bucket=results_bucket, Key=s3_key)
