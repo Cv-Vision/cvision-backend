@@ -9,6 +9,7 @@ results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
 job_postings_table = dynamodb.Table(os.environ["JOB_POSTINGS_TABLE"])
 job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 results_bucket = os.environ["RESULTS_BUCKET"]
+uploads_bucket = os.environ["UPLOADS_BUCKET"]
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
@@ -82,7 +83,7 @@ def lambda_handler(event, context):
                     if cv_upload_key:
                         print(f"🧹 Deleting uploaded CV from S3: {cv_upload_key}")
                         try:
-                            s3.delete_object(Bucket=os.environ["CV_BUCKET"], Key=cv_upload_key)
+                            s3.delete_object(Bucket=uploads_bucket, Key=cv_upload_key)
                         except Exception as e:
                             print(f"⚠️ Failed to delete original CV file: {e}")
                 else:
