@@ -3,9 +3,17 @@ import json
 import boto3
 import google.generativeai as genai
 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+
 # AWS clients
 dynamodb = boto3.resource("dynamodb")
 s3 = boto3.client("s3")
+
+# Environment variables
+job_table = dynamodb.Table(os.environ.get("JOB_DESC_TABLE"))
+cv_bucket = os.environ["CV_BUCKET"]
+results_table = dynamodb.Table(os.environ.get("CV_ANALYSIS_TABLE"))
 
 # CORS headers configuration
 CORS_HEADERS = {
@@ -24,20 +32,15 @@ def lambda_handler(event, context):
             "headers": CORS_HEADERS
         }
 
-    # Environment variables
-    JOB_DESC_TABLE = os.environ.get("JOB_DESC_TABLE")
-    RESULTS_BUCKET = os.environ.get("RESULTS_BUCKET")
-    ANALYSIS_TABLE = os.environ.get("CV_ANALYSIS_TABLE")
-    API_KEY = os.environ.get("GEMINI_API_KEY")
+    print("📥 Event:", event)
+    # Parse request body
+    if "body" in event and event["body"]:
+        body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+    else:
+        body = event
 
-    if not all([JOB_DESC_TABLE, RESULTS_BUCKET, ANALYSIS_TABLE, API_KEY]):
-        return {
-            "statusCode": 500,
-            "headers": CORS_HEADERS,
-            "body": json.dumps({"error": "Missing environment variables"})
-        }
-
-    genai.configure(api_key=API_KEY)
+    job_id = body["job_id"]
+    cv_id = body["cv_id"]
 
     # Extract user_id from JWT claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
@@ -49,10 +52,6 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": "User not authenticated"})
         }
 
-    # Parse input
-    job_id = event.get("job_id")
-    cv_id = event.get("cv_id")
-
     if not job_id or not cv_id:
         return {
             "statusCode": 400,
@@ -62,7 +61,6 @@ def lambda_handler(event, context):
 
     try:
         # Get job description and check authorization
-        job_table = dynamodb.Table(JOB_DESC_TABLE)
         job_response = job_table.get_item(Key={"job_id": job_id})
         if "Item" not in job_response:
             return {
@@ -81,7 +79,7 @@ def lambda_handler(event, context):
 
         # Get CV text from S3
         result_key = f"results/{cv_id}.json"
-        result_obj = s3.get_object(Bucket=RESULTS_BUCKET, Key=result_key)
+        result_obj = s3.get_object(Bucket=cv_bucket, Key=result_key)
         result_data = json.loads(result_obj["Body"].read().decode("utf-8"))
         cv_text = result_data.get("cv_text") or result_data.get("text")
         if not cv_text:
@@ -93,37 +91,58 @@ def lambda_handler(event, context):
 
         # Prompt for Gemini
         prompt = f"""
-Actúa como reclutador experto en entrevistas laborales.
+        Actúa como reclutador experto en entrevistas laborales.
 
-Basándote en la siguiente descripción del puesto y el CV del candidato, genera entre 3 y 5 **preguntas abiertas centradas únicamente en habilidades blandas** (como comunicación, trabajo en equipo, resolución de conflictos, liderazgo, adaptabilidad, etc.).
+        Basándote en la siguiente descripción del puesto y el CV del candidato, genera entre 3 y 5 preguntas abiertas centradas únicamente en habilidades blandas (como comunicación, trabajo en equipo, resolución de conflictos, liderazgo, adaptabilidad, etc.).
 
-No incluyas habilidades técnicas ni preguntas genéricas.
+        - No incluyas habilidades técnicas ni preguntas genéricas.
+        - Enfócate solo en habilidades blandas relevantes para el rol.
 
-Entrega solo las preguntas en formato de lista clara y profesional.
+        Devuelve **únicamente** un objeto JSON con la siguiente estructura:
 
----
+        {{
+          "ss_questions": [
+            "Pregunta 1",
+            "Pregunta 2",
+            "Pregunta 3",
+            ...,
+          ]
+        }}
 
-📄 Descripción del puesto:
-{job_description}
+        No agregues explicaciones, texto adicional ni formato fuera del JSON.
 
-📑 CV del candidato:
-{cv_text}
-"""
+        ---
 
-        model = genai.GenerativeModel("gemini-pro")
-        response = model.generate_content(prompt)
-        raw_text = response.text.strip()
-        questions = [line.strip("-•0123456789. ").strip() for line in raw_text.split("\n") if line.strip()]
-        questions = [q for q in questions if q]
+        📄 Descripción del puesto:
+        {job_description}
 
-        # Save to DynamoDB
-        analysis_table = dynamodb.Table(ANALYSIS_TABLE)
-        analysis_table.put_item(Item={
-            "cv_id": cv_id,
-            "job_id": job_id,
-            "user_id": user_id,
-            "soft_skill_questions": questions
-        })
+        📑 CV del candidato:
+        {cv_text}
+        """
+
+        # Call Gemini model
+        print("🔍 Generating soft skill questions...")
+        print("Prompt for Gemini:", prompt)
+        # Generate content using the Gemini model
+        response = model.generate_content(
+            contents=[prompt],
+            generation_config={"response_mime_type": "application/json", "temperature": 0}
+        )
+        result_json = response.text
+        print("✅ Result obtained from Gemini:", result_json)
+        parsed = json.loads(result_json)
+
+        # Update result in DynamoDB
+        results_table.update_item(
+            Key={
+                "pk": f"RESULT#JD#{job_id}",
+                "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
+            },
+            UpdateExpression="SET ss_questions = :q",
+            ExpressionAttributeValues={
+                ":q": parsed["ss_questions"]
+            }
+        )
 
         return {
             "statusCode": 200,
@@ -131,7 +150,7 @@ Entrega solo las preguntas en formato de lista clara y profesional.
                 **CORS_HEADERS,
                 "Content-Type": "application/json"
             },
-            "body": json.dumps({"soft_skill_questions": questions})
+            "body": json.dumps({"ss_questions": parsed["ss_questions"]})
         }
 
     except Exception as e:
