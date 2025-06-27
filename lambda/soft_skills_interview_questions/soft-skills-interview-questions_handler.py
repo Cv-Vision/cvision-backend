@@ -61,7 +61,7 @@ def lambda_handler(event, context):
 
     try:
         # Get job description and check authorization
-        job_response = job_table.get_item(Key={"job_id": job_id})
+        job_response = job_table.get_item(Key={f"JD#{job_id}"})
         if "Item" not in job_response:
             return {
                 "statusCode": 404,
