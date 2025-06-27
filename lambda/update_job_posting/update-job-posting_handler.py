@@ -207,6 +207,40 @@ def lambda_handler(event, context):
                     "body": json.dumps({"message": f"Job posting with ID {job_id} not found"})
                 }
 
+            current_item = response["Item"]
+            current_status = current_item.get("status", "ACTIVE")
+
+            # Restriction logic based on current status
+            # Determine which fields are being updated (excluding status)
+            updating_fields = any([
+                new_description is not None,
+                new_experience_level is not None,
+                new_english_level is not None,
+                new_industry_experience is not None,
+                new_contract_type is not None,
+                new_additional_requirements is not None
+            ])
+            updating_status = new_status is not None
+
+            if current_status == JobStatus.DELETED:
+                return {
+                    "statusCode": 403,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": "Cannot modify, add CVs, or change status of a deleted job posting."})
+                }
+            if current_status == JobStatus.CANCELLED:
+                if updating_fields:
+                    return {
+                        "statusCode": 403,
+                        "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Cannot modify or add CVs to a cancelled job posting. Only status change is allowed."})
+                    }
+            if current_status == JobStatus.INACTIVE:
+                # Only restrict adding CVs, which is not handled here, so just a placeholder comment
+                pass  # Field updates and status change are allowed
+            if current_status == JobStatus.ACTIVE:
+                pass  # All updates allowed
+
             # Prepare update expression and attribute values
             update_parts = []
             expression_attribute_values = {}
