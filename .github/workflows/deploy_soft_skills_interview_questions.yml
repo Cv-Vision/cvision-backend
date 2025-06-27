@@ -51,5 +51,5 @@ jobs:
       - name: Deploy soft_skill_interview_questions to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name soft_skill_interview_questions \
+            --function-name soft-skills-interview-questions_handler \
             --zip-file fileb://lambda/soft_skills_interview_questions/soft-skills-interview-questions_handler_lambda.zip
