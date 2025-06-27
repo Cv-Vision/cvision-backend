@@ -40,8 +40,8 @@ def lambda_handler(event, context):
         body = event
 
     # Parse input
-    job_id = event.get("job_id")
-    cv_id = event.get("cv_id")
+    job_id = body["job_id"]
+    cv_id = body["cv_id"]
 
     # Extract user_id from JWT claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
