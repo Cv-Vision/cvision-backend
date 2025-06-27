@@ -39,7 +39,6 @@ def lambda_handler(event, context):
     else:
         body = event
 
-    # Parse input
     job_id = body["job_id"]
     cv_id = body["cv_id"]
 
