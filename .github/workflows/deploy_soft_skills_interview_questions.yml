@@ -28,7 +28,7 @@ jobs:
         run: |
           cd lambda/soft_skills_interview_questions
           pip install -r requirements.txt -t python
-          cp soft_skills_interview_questions_handler.py python/
+          cp soft-skills-interview-questions_handler.py python/
           cd python
           zip -r ../soft-skills-interview-questions_handler_lambda.zip .
 
