@@ -1,0 +1,55 @@
+name: Deploy to AWS Lambda - soft_skill_interview_questions
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  deploy:
+    name: soft_skill_interview_questions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies and package Lambda for soft_skill_interview_questions
+        run: |
+          cd lambda/soft_skills_interview_questions
+          pip install -r requirements.txt -t python
+          cp soft_skills_interview_questions_handler.py python/
+          cd python
+          zip -r ../soft-skills-interview-questions_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l lambda/soft_skills_interview_questions
+
+      - name: Verify soft-skills-interview-questions_handler_lambda.zip exists
+        run: |
+          if [ ! -f lambda/soft_skills_interview_questions/soft-skills-interview-questions_handler_lambda.zip ]; then echo "ZIP not found"; exit 1; fi
+
+      - name: Deploy soft_skill_interview_questions to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name soft_skill_interview_questions \
+            --zip-file fileb://lambda/soft_skills_interview_questions/soft-skills-interview-questions_handler_lambda.zip
