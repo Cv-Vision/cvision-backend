@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - cv-batch-invoker
+name: Deploy to AWS Lambda - get-candidates-by-job-id
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: deploy_cv-batch-invoker
+    name: get-candidates-by-job-id_handler
     runs-on: ubuntu-latest
 
     steps:
@@ -24,13 +24,13 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda for cv-batch-invoker
+      - name: Install dependencies and package Lambda for get-candidates-by-job-id_handler
         run: |
-          cd lambda/cv_batch_invoker
-          pip install -r requirements.txt -t python
-          cp cv-batch-invoker_handler.py python/
+          cd lambda/get_candidates_by_job_id
+          pip install -r requirements.txt -t python  
+          cp get-candidates-by-job-id_handler.py python/ 
           cd python
-          zip -r ../../../cv-batch-invoker_handler_lambda.zip .
+          zip -r ../../../get-candidates-by-job-id_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -44,12 +44,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify cv-batch-invoker_handler_lambda.zip exists
+      - name: Verify get-candidates-by-job-id_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/cv-batch-invoker_handler_lambda.zip ]; then echo "cv-batch-invoker_handler_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/get-candidates-by-job-id_handler_lambda.zip ]; then echo "get-candidates-by-job-id_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy cv-batch-invoker to AWS Lambda
+      - name: Deploy get-candidates-by-job-id to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name cv_batch_invoker \
-            --zip-file fileb://$(pwd)/cv-batch-invoker_handler_lambda.zip
+            --function-name get_candidates_by_job_id \
+            --zip-file fileb://$(pwd)/get-candidates-by-job-id_handler_lambda.zip

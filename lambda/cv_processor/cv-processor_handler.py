@@ -1,15 +1,14 @@
 import os
 import json
 import base64
-import uuid
 import boto3
 import fitz
 import PIL.Image
 from io import BytesIO
 from datetime import datetime
 import google.generativeai as genai
+import hashlib
 
-# Configurations and environment variables
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
 
@@ -18,17 +17,45 @@ dynamodb = boto3.resource('dynamodb')
 
 job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
+job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
+def save_job_application(job_id, cv_id, name, output_s3_key, score, upload_key):
+    pk = f"JD#{job_id}" if not job_id.startswith("JD#") else job_id
+    sk = f"CV#{cv_id}"
 
-def extract_text_from_pdf_bytes(pdf_bytes):
-    text = ""
-    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
-        for page in doc:
-            text += page.get_text()
-    return text
+    try:
+        print(f"💾 Guardando/actualizando JobApplication para {pk} - {sk}")
+        job_applications_table.update_item(
+            Key={"pk": pk, "sk": sk},
+            UpdateExpression="""
+                SET #n = :name,
+                    cv_s3_key = :s3key,
+                    cv_upload_key = :uploadkey,
+                    score = :score,
+                    created_at = :created
+            """,
+            ExpressionAttributeNames={"#n": "name"},
+            ExpressionAttributeValues={
+                ":name": name,
+                ":s3key": output_s3_key,
+                ":uploadkey": upload_key,
+                ":score": score,
+                ":created": datetime.utcnow().isoformat()
+            }
+        )
+        print("✅ JobApplication actualizado")
+    except Exception as e:
+        print("❌ Error al guardar JobApplication:", str(e))
+
+
+# Function to calculate SHA-256 hash of file bytes -> this is to generate a unique identifier for the CV
+def calculate_sha256(file_bytes):
+    sha256_hash = hashlib.sha256()
+    sha256_hash.update(file_bytes)
+    return sha256_hash.hexdigest()
 
 
 def pdf_to_png_bytes(pdf_bytes):
@@ -61,9 +88,29 @@ def lambda_handler(event, context):
         job_id = body["job_id"]
         user_id = body["user_id"]
 
-        # Obtain CV from S3
+        # Get CV from S3
         response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
+
+        # Calculate cv_id SHA256 based on file bytes (unique identifier)
+        cv_id = calculate_sha256(cv_bytes)
+
+        # Check if a result already exists
+        existing = results_table.get_item(Key={
+            "pk": f"RESULT#{job_id}#CV#{cv_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
+        })
+        if "Item" in existing:
+            print("📦 Resultado ya existe. Se omite análisis.")
+            output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "Análisis ya existía. No se volvió a procesar.",
+                    "result_s3_path": f"s3://{results_bucket}/{output_key}",
+                    "recruiter_id": user_id
+                })
+            }
 
         # Convert to PNG image
         ext = cv_key.lower().split('.')[-1]
@@ -76,7 +123,7 @@ def lambda_handler(event, context):
 
         # Get job description from DynamoDB
         result = job_table.get_item(Key={
-            "pk": f"JD#{job_id}",
+            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
             "sk": f"USER#{user_id}"
         })
         item = result.get("Item")
@@ -84,37 +131,63 @@ def lambda_handler(event, context):
             return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
 
         job_description = item["description"]
-        participant_id = str(uuid.uuid4())
 
-        # Create prompt for Gemini
+        # Extract optional requirements
+        experience_level = item.get("experience_level")
+        english_level = item.get("english_level")
+        industry_experience = item.get("industry_experience")
+        contract_type = item.get("contract_type")
+        additional_requirements = item.get("additional_requirements")
+
+        # Create a section of optional requirements for the prompt
+        additional_requirements_text = ""
+
+        if experience_level:
+            additional_requirements_text += f"\nNivel de experiencia requerido: {experience_level}"
+
+        if english_level:
+            additional_requirements_text += f"\nNivel de inglés requerido: {english_level}"
+
+        if industry_experience:
+            if industry_experience.get("required", False):
+                industry = industry_experience.get("industry", "")
+                additional_requirements_text += f"\nExperiencia en la industria requerida: {industry}"
+            else:
+                additional_requirements_text += "\nNo se requiere experiencia específica en la industria."
+
+        if contract_type:
+            additional_requirements_text += f"\nTipo de contrato: {contract_type}"
+
+        if additional_requirements:
+            additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
+
         prompt = f"""
-    Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
+        Actúa como un experto en recursos humanos especializado en evaluación de candidatos según su currículum.
 
-    A continuación se presentarán varios currículums, cada uno en el siguiente formato:
+        A continuación se presentarán varios currículums.
 
-    [participant_id] - [Texto del currículum]
+        Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto y los requisitos adicionales especificados.
+        Hay que seguir al pie de la letra lo que dice la descripción del puesto y los requisitos adicionales, y en base a eso evaluar el currículum.
+        También debes identificar posibles habilidades blandas que el candidato pueda tener, solo si están explícita o claramente inferidas a partir de su experiencia o logros.
+        Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
 
-    Tu tarea es evaluar cada uno de ellos según su adecuación a la descripción del puesto, considerando los requisitos de la descripción del puesto.
-    No hay requisitos extra, mas que el candidato pertenezca a la industria correcta.
-    Hay que seguir al pie de la letra lo que dice la descripción del puesto y en base a eso evaluar el currículum.
+        {{
+          "name" : ("nombre del candidato"),
+          "score": [puntaje de 0 a 100],
+          "reasons": [
+            "razón 1",
+            "razón 2",
+            ...
+          ]
+        }}
 
-    Por cada currículum, devuelve una evaluación en formato JSON con esta estructura:
+        Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
 
-    {{
-      "participant_id": "...",
-      "score": [puntaje de 0 a 100],
-      "reasons": [
-        "razón 1",
-        "razón 2",
-        ...
-      ]
-    }}
+        Descripción del puesto:
+        {job_description}
 
-    Importante: devuelve un objeto JSON por cada currículum, sin texto adicional.
-
-    Descripción del puesto:
-    {job_description}
-    """
+        Requisitos adicionales:{additional_requirements_text}
+        """
 
         # Call Gemini
         response = model.generate_content(
@@ -127,22 +200,24 @@ def lambda_handler(event, context):
                     }
                 }
             ],
-            generation_config={"response_mime_type": "application/json"},
+            generation_config={"response_mime_type": "application/json",
+                               "temperature": 0
+                               },
         )
 
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
 
-        # Parse result
         parsed = json.loads(result_json)
-        if not all(k in parsed for k in ["participant_id", "score", "reasons"]):
-            return {
-                "statusCode": 500,
-                "body": json.dumps({"error": "Formato de respuesta inesperado de Gemini"})
-            }
 
-        # Save to S3
-        output_key = f"results/{job_id}/{participant_id}.json"
+        # If it's a list, take the first element or process each one
+        if isinstance(parsed, list):
+            parsed = parsed[0]
+
+        parsed["name"] = parsed["name"].title()
+
+        # Save result to S3
+        output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
             Bucket=results_bucket,
             Key=output_key,
@@ -150,24 +225,28 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        # Save to DynamoDB
+        # Save result to DynamoDB
         results_table.put_item(Item={
-            "pk": f"JOB#{job_id}",
-            "sk": f"PARTICIPANT#{participant_id}",
-            "participant_id": participant_id,
-            "user_id": user_id,
+            "pk": f"RESULT#{job_id}",
+            "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
+            "job_id": job_id,
+            "name": parsed["name"],
+            "recruiter_id": user_id,
             "score": parsed["score"],
             "reasons": parsed.get("reasons", []),
             "s3_key": output_key,
-            "timestamp": datetime.utcnow().isoformat()
+            "created_at": datetime.utcnow().isoformat()
         })
+
+        # Save job application to DynamoDB
+        save_job_application(job_id, cv_id, parsed.get("name"), output_key, parsed.get("score"), cv_key)
 
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "message": "Evaluación completada",
                 "result_s3_path": f"s3://{results_bucket}/{output_key}",
-                "participant_id": participant_id
+                "recruiter_id": user_id
             })
         }
 
