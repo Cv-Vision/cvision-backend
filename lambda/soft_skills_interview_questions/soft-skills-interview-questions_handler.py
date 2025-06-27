@@ -32,6 +32,17 @@ def lambda_handler(event, context):
             "headers": CORS_HEADERS
         }
 
+    print("📥 Event:", event)
+    # Parse request body
+    if "body" in event and event["body"]:
+        body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
+    else:
+        body = event
+
+    # Parse input
+    job_id = event.get("job_id")
+    cv_id = event.get("cv_id")
+
     # Extract user_id from JWT claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
@@ -41,10 +52,6 @@ def lambda_handler(event, context):
             "headers": CORS_HEADERS,
             "body": json.dumps({"error": "User not authenticated"})
         }
-
-    # Parse input
-    job_id = event.get("job_id")
-    cv_id = event.get("cv_id")
 
     if not job_id or not cv_id:
         return {
