@@ -60,22 +60,16 @@ def lambda_handler(event, context):
         }
 
     try:
-        # Get job description and check authorization
-        job_response = job_table.get_item(Key={f"JD#{job_id}"})
-        if "Item" not in job_response:
-            return {
-                "statusCode": 404,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"error": "Job not found"})
-            }
-        job_item = job_response["Item"]
-        if job_item.get("user_id") != user_id:
-            return {
-                "statusCode": 403,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"error": "Unauthorized"})
-            }
-        job_description = job_item.get("description", "")
+        # Get job description from DynamoDB
+        result = job_table.get_item(Key={
+            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
+            "sk": f"USER#{user_id}"
+        })
+        item = result.get("Item")
+        if not item:
+            return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
+
+        job_description = item["description"]
 
         # Get CV text from S3
         result_key = f"results/{cv_id}.json"
