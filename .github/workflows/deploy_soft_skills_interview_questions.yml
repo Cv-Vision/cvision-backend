@@ -41,7 +41,7 @@ jobs:
           pip install -r requirements.txt -t python
           cp soft-skills-interview-questions_handler.py python/
           cd python
-          zip -r ../soft-skills-interview-questions_handler_lambda.zip .
+          zip -r ../../../soft-skills-interview-questions_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
