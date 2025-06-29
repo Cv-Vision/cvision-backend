@@ -56,7 +56,7 @@ jobs:
           LAYER_ARN=$(aws lambda publish-layer-version \
             --layer-name pymupdf-layer-soft-skills \
             --description "PyMuPDF and Pillow Layer for Soft Skills Lambda" \
-            --zip-file fileb:///pymupdf_layer_soft_skills.zip \
+            --zip-file fileb://pymupdf_layer_soft_skills.zip \
             --compatible-runtimes python3.9 python3.10 python3.11 python3.13 \
             --query 'LayerVersionArn' \
             --output text)
