@@ -1,6 +1,9 @@
 import os
 import json
+import base64
 import boto3
+import fitz
+import PIL.Image
 import google.generativeai as genai
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -41,6 +44,7 @@ def lambda_handler(event, context):
 
     job_id = body["job_id"]
     cv_id = body["cv_id"]
+    cv_upload_key = body["cv_upload_key"]
 
     # Extract user_id from JWT claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
@@ -71,17 +75,11 @@ def lambda_handler(event, context):
 
         job_description = item["description"]
 
-        # Get CV text from S3
-        result_key = f"results/{cv_id}.json"
-        result_obj = s3.get_object(Bucket=cv_bucket, Key=result_key)
+        # Get CV from S3
+        response = s3.get_object(Bucket=cv_bucket, Key=cv_upload_key)
+        cv_bytes = response["Body"].read()
         result_data = json.loads(result_obj["Body"].read().decode("utf-8"))
-        cv_text = result_data.get("cv_text") or result_data.get("text")
-        if not cv_text:
-            return {
-                "statusCode": 500,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"error": "CV text not found in S3 object"})
-            }
+
 
         # Prompt for Gemini
         prompt = f"""
@@ -110,17 +108,22 @@ def lambda_handler(event, context):
         📄 Descripción del puesto:
         {job_description}
 
-        📑 CV del candidato:
-        {cv_text}
         """
 
-        # Call Gemini model
-        print("🔍 Generating soft skill questions...")
-        print("Prompt for Gemini:", prompt)
-        # Generate content using the Gemini model
+        # Call Gemini
         response = model.generate_content(
-            contents=[prompt],
-            generation_config={"response_mime_type": "application/json", "temperature": 0}
+            contents=[
+                prompt,
+                {
+                    "inline_data": {
+                        "mime_type": "image/png",
+                        "data": base64.b64encode(image_bytes).decode("utf-8")
+                    }
+                }
+            ],
+            generation_config={"response_mime_type": "application/json",
+                               "temperature": 0
+                               },
         )
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
