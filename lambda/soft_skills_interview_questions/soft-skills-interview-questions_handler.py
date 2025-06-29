@@ -2,8 +2,9 @@ import os
 import json
 import base64
 import boto3
-import fitz
-import PIL.Image
+import fitz  # PyMuPDF
+from PIL import Image
+import io
 import google.generativeai as genai
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -42,9 +43,9 @@ def lambda_handler(event, context):
     else:
         body = event
 
-    job_id = body["job_id"]
-    cv_id = body["cv_id"]
-    cv_upload_key = body["cv_upload_key"]
+    job_id = body.get("job_id")
+    cv_id = body.get("cv_id")
+    cv_upload_key = body.get("cv_upload_key")
 
     # Extract user_id from JWT claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
@@ -56,11 +57,11 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": "User not authenticated"})
         }
 
-    if not job_id or not cv_id:
+    if not job_id or not cv_id or not cv_upload_key:
         return {
             "statusCode": 400,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"error": "Missing job_id or cv_id"})
+            "body": json.dumps({"error": "Missing job_id, cv_id, or cv_upload_key"})
         }
 
     try:
@@ -71,44 +72,59 @@ def lambda_handler(event, context):
         })
         item = result.get("Item")
         if not item:
-            return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
+            return {
+                "statusCode": 404,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"error": "Job description not found"})
+            }
 
         job_description = item["description"]
 
         # Get CV from S3
         response = s3.get_object(Bucket=cv_bucket, Key=cv_upload_key)
         cv_bytes = response["Body"].read()
-        result_data = json.loads(result_obj["Body"].read().decode("utf-8"))
 
+        # Convert first page of PDF to PNG image bytes
+        pdf_doc = fitz.open(stream=cv_bytes, filetype="pdf")
+        if pdf_doc.page_count == 0:
+            return {
+                "statusCode": 500,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"error": "CV PDF is empty"})
+            }
+        page = pdf_doc.load_page(0)
+        pix = page.get_pixmap()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format="PNG")
+        image_bytes = img_byte_arr.getvalue()
 
         # Prompt for Gemini
         prompt = f"""
-        Actúa como reclutador experto en entrevistas laborales.
+Actúa como reclutador experto en entrevistas laborales.
 
-        Basándote en la siguiente descripción del puesto y el CV del candidato, genera entre 3 y 5 preguntas abiertas centradas únicamente en habilidades blandas (como comunicación, trabajo en equipo, resolución de conflictos, liderazgo, adaptabilidad, etc.).
+Basándote en la siguiente descripción del puesto y el CV del candidato, genera entre 3 y 5 preguntas abiertas centradas únicamente en habilidades blandas (como comunicación, trabajo en equipo, resolución de conflictos, liderazgo, adaptabilidad, etc.).
 
-        - No incluyas habilidades técnicas ni preguntas genéricas.
-        - Enfócate solo en habilidades blandas relevantes para el rol.
+- No incluyas habilidades técnicas ni preguntas genéricas.
+- Enfócate solo en habilidades blandas relevantes para el rol.
 
-        Devuelve **únicamente** un objeto JSON con la siguiente estructura:
+Devuelve **únicamente** un objeto JSON con la siguiente estructura:
 
-        {{
-          "ss_questions": [
-            "Pregunta 1",
-            "Pregunta 2",
-            "Pregunta 3",
-            ...,
-          ]
-        }}
+{{
+  "ss_questions": [
+    "Pregunta 1",
+    "Pregunta 2",
+    "Pregunta 3"
+  ]
+}}
 
-        No agregues explicaciones, texto adicional ni formato fuera del JSON.
+No agregues explicaciones, texto adicional ni formato fuera del JSON.
 
-        ---
+---
 
-        📄 Descripción del puesto:
-        {job_description}
-
-        """
+📄 Descripción del puesto:
+{job_description}
+"""
 
         # Call Gemini
         response = model.generate_content(
@@ -121,9 +137,10 @@ def lambda_handler(event, context):
                     }
                 }
             ],
-            generation_config={"response_mime_type": "application/json",
-                               "temperature": 0
-                               },
+            generation_config={
+                "response_mime_type": "application/json",
+                "temperature": 0
+            },
         )
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
