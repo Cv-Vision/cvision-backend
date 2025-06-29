@@ -10,11 +10,12 @@ JOB_POSTINGS_TABLE = os.environ["JOB_POSTINGS_TABLE"]
 UPLOADS_BUCKET = os.environ["UPLOADS_BUCKET"]
 
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "http://localhost:3000",
-    "Access-Control-Allow-Headers": "Content-Type,Authorization",
-    "Access-Control-Allow-Methods": "OPTIONS,GET",
-    "Access-Control-Allow-Credentials": "true"
+    "access-control-allow-origin": "http://localhost:3000",
+    "access-control-allow-headers": "Content-Type,Authorization",
+    "access-control-allow-methods": "OPTIONS,GET",
+    "access-control-allow-credentials": "true"
 }
+
 
 
 def lambda_handler(event, context):
