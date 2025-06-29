@@ -1,0 +1,50 @@
+name: Deploy to AWS Lambda - get-cv-download-url
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - dev
+      - master
+
+jobs:
+  deploy:
+    name: get-cv-download-url_handler
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies and package Lambda for get-cv-download-url_handler
+        run: |
+          cd lambda/get_cv_download_url
+          pip install -r requirements.txt -t python
+          cp get-cv-download-url_handler.py python/
+          cd python
+          zip -r ../../../get-cv-download-url_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: Verify get-cv-download-url_handler_lambda.zip exists
+        run: |
+          if [ ! -f $(pwd)/get-cv-download-url_handler_lambda.zip ]; then echo "Lambda ZIP not found"; exit 1; fi
+
+      - name: Deploy get-cv-download-url to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name get_cv_download_url \
+            --zip-file fileb://get-cv-download-url_handler_lambda.zip
