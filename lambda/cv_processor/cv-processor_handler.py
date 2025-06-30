@@ -250,9 +250,59 @@ def lambda_handler(event, context):
             })
         }
 
+
     except Exception as e:
         print("❌ Error:", str(e))
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": str(e)})
-        }
+        # En caso de error, persistir igualmente el intento fallido
+        try:
+            # Intentar calcular el hash del archivo si se pudo leer
+            cv_id = calculate_sha256(cv_bytes) if 'cv_bytes' in locals() else calculate_sha256(cv_key.encode())
+            output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+            # Guardar resultado fallido en S3 (opcional pero recomendado)
+            error_payload = {
+                "name": "Desconocido",
+                "score": None,
+                "reasons": [],
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            s3.put_object(
+                Bucket=results_bucket,
+                Key=output_key,
+                Body=json.dumps(error_payload).encode("utf-8"),
+                ContentType="application/json"
+            )
+            # Guardar entrada en tabla de resultados
+            results_table.put_item(Item={
+                "pk": f"RESULT#{job_id}",
+                "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
+                "job_id": job_id,
+                "name": "Desconocido",
+                "recruiter_id": user_id,
+                "score": None,
+                "reasons": [],
+                "s3_key": output_key,
+                "error": str(e),
+                "created_at": datetime.utcnow().isoformat()
+            })
+            # Guardar entrada en tabla de aplicaciones
+            save_job_application(job_id, cv_id, "Desconocido", output_key, None, cv_key)
+            return {
+                "statusCode": 200,
+                "body": json.dumps({
+                    "message": "CV fallido, pero registrado correctamente.",
+                    "error": str(e),
+                    "result_s3_path": f"s3://{results_bucket}/{output_key}"
+                })
+            }
+
+        except Exception as fallback_error:
+            print("❌ Error adicional durante manejo de fallo:", str(fallback_error))
+            return {
+                "statusCode": 500,
+                "body": json.dumps({
+                    "message": "Fallo crítico al procesar y guardar resultado del CV.",
+                    "original_error": str(e),
+                    "fallback_error": str(fallback_error)
+                })
+            }
