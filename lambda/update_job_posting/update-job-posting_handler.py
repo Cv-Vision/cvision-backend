@@ -109,7 +109,7 @@ def lambda_handler(event, context):
 
         # Check if at least one field is provided for update
         if not any(key in body for key in ["description", "status", "experience_level", "english_level",
-                                           "industry_experience", "contract_type", "additional_requirements", "location"]):
+                                           "industry_experience", "contract_type", "additional_requirements", "job_location"]):
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
@@ -121,7 +121,7 @@ def lambda_handler(event, context):
         new_status = body.get("status")
         new_experience_level = body.get("experience_level")
         new_english_level = body.get("english_level")
-        new_location = body.get("location")
+        new_location = body.get("job_location")
         new_industry_experience = body.get("industry_experience")
         new_contract_type = body.get("contract_type")
         new_additional_requirements = body.get("additional_requirements")
@@ -145,7 +145,7 @@ def lambda_handler(event, context):
                     "body": json.dumps({"message": f"Invalid experience level value: {new_experience_level}"})
                 }
 
-        # Validate location if provided
+        # Validate job_location if provided
         if new_location is not None:
             if not isinstance(new_location, str):
                 return {
@@ -287,8 +287,8 @@ def lambda_handler(event, context):
 
             # Add location update if provided
             if new_location is not None:
-                update_parts.append("location = :location")
-                expression_attribute_values[":location"] = new_location
+                update_parts.append("job_location = :job_location")
+                expression_attribute_values[":job_location"] = new_location
 
             # Add experience_level update if provided
             if new_experience_level is not None:
