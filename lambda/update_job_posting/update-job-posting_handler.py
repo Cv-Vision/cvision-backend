@@ -27,6 +27,7 @@ class ExperienceLevel(str, Enum):
     SENIOR = "SENIOR"
 
 
+# === ENUM for english level ===
 class EnglishLevel(str, Enum):
     BASIC = "BASIC"
     INTERMEDIATE = "INTERMEDIATE"
@@ -35,6 +36,7 @@ class EnglishLevel(str, Enum):
     NOT_REQUIRED = "NOT_REQUIRED"
 
 
+# === ENUM for contract type ===
 class ContractType(str, Enum):
     FULL_TIME = "FULL_TIME"
     PART_TIME = "PART_TIME"
@@ -106,9 +108,8 @@ def lambda_handler(event, context):
             }
 
         # Check if at least one field is provided for update
-        if not any(key in body for key in ["description", "status", "experience_level",
-                                           "english_level", "industry_experience",
-                                           "contract_type", "additional_requirements"]):
+        if not any(key in body for key in ["description", "status", "experience_level", "english_level",
+                                           "industry_experience", "contract_type", "additional_requirements", "location"]):
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
@@ -120,6 +121,7 @@ def lambda_handler(event, context):
         new_status = body.get("status")
         new_experience_level = body.get("experience_level")
         new_english_level = body.get("english_level")
+        new_location = body.get("location")
         new_industry_experience = body.get("industry_experience")
         new_contract_type = body.get("contract_type")
         new_additional_requirements = body.get("additional_requirements")
@@ -141,6 +143,22 @@ def lambda_handler(event, context):
                     "statusCode": 400,
                     "headers": CORS_HEADERS,
                     "body": json.dumps({"message": f"Invalid experience level value: {new_experience_level}"})
+                }
+
+        # Validate location if provided
+        if new_location is not None:
+            if not isinstance(new_location, str):
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": "Location must be a string"})
+                }
+
+            if not new_location.strip():
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": "Location cannot be empty"})
                 }
 
         # Validate english_level if provided
@@ -216,6 +234,7 @@ def lambda_handler(event, context):
                 new_description is not None,
                 new_experience_level is not None,
                 new_english_level is not None,
+                new_location is not None,
                 new_industry_experience is not None,
                 new_contract_type is not None,
                 new_additional_requirements is not None
@@ -265,6 +284,11 @@ def lambda_handler(event, context):
                         "headers": CORS_HEADERS,
                         "body": json.dumps({"message": f"Invalid status value: {new_status}"})
                     }
+
+            # Add location update if provided
+            if new_location is not None:
+                update_parts.append("location = :location")
+                expression_attribute_values[":location"] = new_location
 
             # Add experience_level update if provided
             if new_experience_level is not None:
