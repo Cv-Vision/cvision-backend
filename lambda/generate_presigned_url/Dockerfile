@@ -1,11 +1,12 @@
-FROM public.ecr.aws/lambda/python:3.9
+# Use the official Python image from Docker Hub
+FROM python:3.13-slim
 
-# Copiamos el handler y requirements
-COPY generate_presigned_url_handler.py ./
-COPY requirements.txt ./
+# Establish the environment variable for Python to not buffer stdout and stderr
+ENV PYTHONUNBUFFERED=1
 
-# Instalamos las dependencias
-RUN pip install -r requirements.txt
+# Copy the requirements file into the container
+# The path is relative to the build context (cvision-backend/)
+COPY lambda/generate_presigned_url/requirements.txt .
 
-# Entry point para AWS Lambda
-CMD ["generate_presigned_url_handler.lambda_handler"]
+# Install the required packages inside the container
+RUN pip install --no-cache-dir -r requirements.txt

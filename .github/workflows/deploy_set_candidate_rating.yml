@@ -1,0 +1,55 @@
+name: Deploy to AWS Lambda - set-candidate-rating_handler
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  deploy:
+    name: set-candidate-rating_handler
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies and package Lambda for set-candidate-rating_handler
+        run: |
+          cd lambda/candidate_rating/set_candidate_rating
+          pip install -r requirements.txt -t python
+          cp set_candidate_rating_handler.py python/
+          cd python
+          zip -r ../set-candidate-rating_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l lambda/candidate_rating/set_candidate_rating
+
+      - name: Verify set-candidate-rating_handler_lambda.zip exists
+        run: |
+          if [ ! -f lambda/candidate_rating/set_candidate_rating/set-candidate-rating_handler_lambda.zip ]; then echo "ZIP not found"; exit 1; fi
+
+      - name: Deploy set-candidate-rating to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name set_candidate_rating \
+            --zip-file fileb://lambda/candidate_rating/set_candidate_rating/set-candidate-rating_handler_lambda.zip
