@@ -10,7 +10,7 @@ import google.generativeai as genai
 import hashlib
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-2.5-flash-preview-04-17")
+model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 s3 = boto3.client("s3")
 dynamodb = boto3.resource('dynamodb')
