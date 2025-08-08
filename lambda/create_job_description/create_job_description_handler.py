@@ -12,6 +12,26 @@ class JobStatus(str, Enum):
     CANCELLED = "CANCELLED"
     DELETED = "DELETED"
 
+# === ENUMS for structured requirements ===
+class ExperienceLevel(str, Enum):
+    JUNIOR = "JUNIOR"
+    SEMISENIOR = "SEMISENIOR"
+    SENIOR = "SENIOR"
+
+class EnglishLevel(str, Enum):
+    BASIC = "BASIC"
+    INTERMEDIATE = "INTERMEDIATE"
+    ADVANCED = "ADVANCED"
+    NATIVE = "NATIVE"
+    NOT_REQUIRED = "NOT_REQUIRED"
+
+class ContractType(str, Enum):
+    FULL_TIME = "FULL_TIME"
+    PART_TIME = "PART_TIME"
+    CONTRACT = "CONTRACT"
+    FREELANCE = "FREELANCE"
+    INTERNSHIP = "INTERNSHIP"
+
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
@@ -76,6 +96,50 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Unauthorized - user_id not found"})
             }
 
+        # Optional validated fields
+        experience_level = body.get("experience_level")
+        english_level = body.get("english_level")
+        industry_experience = body.get("industry_experience")
+        contract_type = body.get("contract_type")
+        additional_requirements = body.get("additional_requirements")
+        job_location = body.get("job_location")
+
+        if experience_level is not None:
+            try:
+                ExperienceLevel(experience_level)
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid experience level value: {experience_level}"})}
+
+        if english_level is not None:
+            try:
+                EnglishLevel(english_level)
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid English level value: {english_level}"})}
+
+        if industry_experience is not None:
+            if not isinstance(industry_experience, dict) or "required" not in industry_experience or not isinstance(
+                    industry_experience["required"], bool):
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Industry experience must include boolean 'required'"})}
+            if industry_experience["required"]:
+                if not industry_experience.get("industry") or not str(industry_experience.get("industry")).strip():
+                    return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps(
+                        {"message": "When industry experience is required, 'industry' must be provided"})}
+
+        if contract_type is not None:
+            try:
+                ContractType(contract_type)
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid contract type value: {contract_type}"})}
+
+        if job_location is not None:
+            if not isinstance(job_location, str) or not job_location.strip():
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Location must be a non-empty string"})}
+
         # Generate unique job_id and created_at timestamp
         job_id = str(uuid.uuid4())
         created_at = datetime.utcnow().isoformat()
@@ -89,6 +153,20 @@ def lambda_handler(event, context):
             "description": body["description"],
             "status": "ACTIVE",
         }
+
+        # Attach optional fields if provided
+        if experience_level is not None:
+            item["experience_level"] = experience_level
+        if english_level is not None:
+            item["english_level"] = english_level
+        if industry_experience is not None:
+            item["industry_experience"] = industry_experience
+        if contract_type is not None:
+            item["contract_type"] = contract_type
+        if additional_requirements is not None:
+            item["additional_requirements"] = additional_requirements
+        if job_location is not None:
+            item["job_location"] = job_location
 
         # Save the item in DynamoDB
         table.put_item(Item=item)
