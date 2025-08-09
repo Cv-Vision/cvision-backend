@@ -9,7 +9,7 @@ logger.setLevel(logging.INFO)
 REGION = os.environ.get('REGION')
 USERPOOL_ID = os.environ.get('USERPOOL_ID')
 
-def handler(event, context):
+def lambda_handler(event, context):
     logger.info("Authorizer ejecutándose")
     logger.info(f"Event: {json.dumps(event)}")
 
