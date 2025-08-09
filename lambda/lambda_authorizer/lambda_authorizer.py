@@ -7,9 +7,9 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Parámetros Cognito
-REGION = 'us-east-2'  # Cambiá por tu región
-USERPOOL_ID = 'us-east-2_OYnSTUQJa'  # Cambiá por tu user pool id
-APP_CLIENT_ID = '7q9u97f4vklogma8e8vipfvb0d'  # Client ID
+REGION = os.environ.get('REGION')
+USERPOOL_ID = os.environ.get('USERPOOL_ID')
+USER_POOL_ID = os.environ.get('USER_POOL_ID')
 
 # URL para obtener JWKS públicos de Cognito
 JWKS_URL = f'https://cognito-idp.{REGION}.amazonaws.com/{USERPOOL_ID}/.well-known/jwks.json'
