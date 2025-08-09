@@ -2,64 +2,95 @@ import json
 import logging
 import jwt
 import urllib.request
-from jwt import PyJWKClient
-
-REGION = 'us-east-2'  # Cambia por tu región
-USERPOOL_ID = 'us-east-2_OYnSTUQJa'  # Cambia por tu user pool id
-APP_CLIENT_ID = '7q9u97f4vklogma8e8vipfvb0d'  # Tu client id
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-jwks_url = f'https://cognito-idp.{REGION}.amazonaws.com/{USERPOOL_ID}/.well-known/jwks.json'
-jwks_client = PyJWKClient(jwks_url)
+# Parámetros Cognito
+REGION = 'us-east-2'  # Cambiá por tu región
+USERPOOL_ID = 'us-east-2_OYnSTUQJa'  # Cambiá por tu user pool id
+APP_CLIENT_ID = '7q9u97f4vklogma8e8vipfvb0d'  # Client ID
 
-def build_policy(principal_id, effect, method_arn):
-    policy = {
-        "principalId": principal_id,
-        "policyDocument": {
-            "Version": "2012-10-17",
-            "Statement": [{
-                "Action": "execute-api:Invoke",
-                "Effect": effect,
-                "Resource": method_arn
-            }]
-        }
-    }
-    return policy
+# URL para obtener JWKS públicos de Cognito
+JWKS_URL = f'https://cognito-idp.{REGION}.amazonaws.com/{USERPOOL_ID}/.well-known/jwks.json'
+
+# Grupos permitidos para acceso
+ALLOWED_GROUPS = {'recruiters', 'candidates'}
+
+# Cache JWKS para validar tokens
+jwks = None
+
+def get_jwks():
+    global jwks
+    if jwks is None:
+        with urllib.request.urlopen(JWKS_URL) as response:
+            jwks = json.loads(response.read())
+    return jwks
 
 def lambda_handler(event, context):
-    token = event['authorizationToken']
-    method_arn = event['methodArn']
+    logger.info(f'Evento recibido: {json.dumps(event)}')
 
-    logger.info(f"Event: {json.dumps(event)}")
+    token = event.get('authorizationToken')
+    if not token:
+        logger.error('No se recibió token de autorización')
+        raise Exception('Unauthorized')
 
-    if token.lower().startswith('bearer '):
-        token = token[7:]  # sacamos 'Bearer '
+    # El token viene con "Bearer " adelante, lo saco
+    token = token.replace('Bearer ', '')
 
     try:
-        signing_key = jwks_client.get_signing_key_from_jwt(token).key
+        jwks = get_jwks()
+        # Validar el token (ver clave pública, algoritmo, issuer, audience)
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header['kid']
+        key = next((k for k in jwks['keys'] if k['kid'] == kid), None)
 
-        # Validamos token, incluye verificación firma, issuer, audiencia
+        if key is None:
+            logger.error('Clave pública no encontrada en JWKS')
+            raise Exception('Unauthorized')
+
+        public_key = jwt.algorithms.RSAAlgorithm.from_jwk(json.dumps(key))
+
         payload = jwt.decode(
             token,
-            signing_key,
+            public_key,
             algorithms=['RS256'],
             audience=APP_CLIENT_ID,
             issuer=f'https://cognito-idp.{REGION}.amazonaws.com/{USERPOOL_ID}'
         )
-        logger.info(f"Payload decodificado: {payload}")
 
-        # Extraemos grupos (puede no existir)
-        groups = payload.get('cognito:groups', [])
+        logger.info(f'Payload decodificado: {payload}')
 
-        # Control básico: solo dejar pasar si está en grupo recruiter
-        if 'recruiters' in groups:
-            return build_policy(payload['sub'], 'Allow', method_arn)
-        else:
-            logger.warning(f"Usuario sin permisos: grupos {groups}")
+        # Verificar grupos permitidos
+        user_groups = set(payload.get('cognito:groups', []))
+        if not user_groups.intersection(ALLOWED_GROUPS):
+            logger.warning(f'Usuario no pertenece a grupos permitidos: {user_groups}')
             raise Exception('Unauthorized')
 
+        # Construir política para permitir acceso
+        method_arn = event['methodArn']
+        principal_id = payload['sub']
+
+        policy = generate_policy(principal_id, 'Allow', method_arn)
+
+        return policy
+
     except Exception as e:
-        logger.error(f"Error al procesar token: {e}")
+        logger.error(f'Error al procesar token: {str(e)}')
         raise Exception('Unauthorized')
+
+
+def generate_policy(principal_id, effect, resource):
+    auth_response = {}
+    auth_response['principalId'] = principal_id
+    if effect and resource:
+        policy_document = {
+            'Version': '2012-10-17',
+            'Statement': [{
+                'Action': 'execute-api:Invoke',
+                'Effect': effect,
+                'Resource': resource
+            }]
+        }
+        auth_response['policyDocument'] = policy_document
+    return auth_response
