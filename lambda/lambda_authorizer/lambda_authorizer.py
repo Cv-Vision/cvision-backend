@@ -9,7 +9,7 @@ logger.setLevel(logging.INFO)
 REGION = os.environ.get('REGION')
 USERPOOL_ID = os.environ.get('USERPOOL_ID')
 
-def lambda_handler(event, context):
+def handler(event, context):
     logger.info("Authorizer ejecutándose")
     logger.info(f"Event: {json.dumps(event)}")
 
@@ -18,11 +18,17 @@ def lambda_handler(event, context):
         logger.error("Token no recibido")
         raise Exception("Unauthorized")
 
+    # Remove the Bearer prefix if present
+    if token.startswith("Bearer "):
+        token = token.split(" ", 1)[1]
+
     try:
         decoded = jwt.decode(token, options={"verify_signature": False})
-        logger.info(f"Grupos: {decoded.get('cognito:groups', [])}")
+        logger.info(f"Payload decodificado: {decoded}")
+        grupos = decoded.get('cognito:groups', [])
+        logger.info(f"Grupos: {grupos}")
 
-        if 'recruiters' in decoded.get('cognito:groups', []):
+        if 'recruiters' in grupos:
             return generate_policy(decoded['sub'], "Allow", event['methodArn'])
         else:
             return generate_policy(decoded['sub'], "Deny", event['methodArn'])
