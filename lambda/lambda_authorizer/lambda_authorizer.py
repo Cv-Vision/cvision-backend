@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.request
 import jwt  # PyJWT
 from jwt.algorithms import RSAAlgorithm
