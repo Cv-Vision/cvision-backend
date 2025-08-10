@@ -28,7 +28,7 @@ def lambda_handler(event, context):
         if not filename:
             return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Missing filename"})}
 
-        s3_key = f"Candidate/{user_id}/{filename}"
+        s3_key = f"candidates/{user_id}/{filename}"
 
         url = s3.generate_presigned_url(
             ClientMethod="put_object",
