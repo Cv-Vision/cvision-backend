@@ -1,0 +1,55 @@
+name: Deploy to AWS Lambda - candidate-profile_handler
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  deploy:
+    name: candidate-profile_handler
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies and package Lambda for candidate-profile_handler
+        run: |
+          cd lambda/candidate_profile
+          pip install -r requirements.txt -t python
+          cp candidate_profile_handler.py python/
+          cd python
+          zip -r ../candidate-profile_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l lambda/candidate_profile
+
+      - name: Verify candidate-profile_handler_lambda.zip exists
+        run: |
+          if [ ! -f lambda/candidate_profile/candidate-profile_handler_lambda.zip ]; then echo "ZIP not found"; exit 1; fi
+
+      - name: Deploy candidate-profile to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name candidate_profile \
+            --zip-file fileb://lambda/candidate_profile/candidate-profile_handler_lambda.zip
