@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - delete-applications
+name: Deploy to AWS Lambda - delete_applications
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: delete-applications_handler
+    name: deploy_delete_applications
     runs-on: ubuntu-latest
 
     steps:
@@ -24,19 +24,19 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda for delete-applications_handler
+      - name: Install dependencies and package Lambda for delete_applications
         run: |
           cd lambda/delete_applications
           pip install -r requirements.txt -t python  
-          cp delete-applications_handler.py python/ 
+          cp delete_applications_handler.py python/ 
           cd python
-          zip -r ../../../delete-applications_handler_lambda.zip .
+          zip -r ../../../delete_applications_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
       - name: "Debug: Current directory and files"
@@ -44,12 +44,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify delete-applications_handler_lambda.zip exists
+      - name: Verify delete_applications_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/delete-applications_handler_lambda.zip ]; then echo "delete-applications_handler_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)delete_applications_handler_lambda.zip ]; then echo "delete_applications_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy delete-applications to AWS Lambda
+      - name: Deploy delete_applications to AWS Lambda
         run: |
           aws lambda update-function-code \
             --function-name delete_applications \
-            --zip-file fileb://$(pwd)/delete-applications_handler_lambda.zip
+            --zip-file fileb://$(pwd)/delete_applications_handler_lambda.zip

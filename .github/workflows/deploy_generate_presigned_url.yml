@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: deploy_generate-presigned-url
+    name: deploy_generate_presigned_url
     runs-on: ubuntu-latest
 
     steps:
@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda for generate_presigned_url_handler
+      - name: Install dependencies and package Lambda for generate_presigned_url
         run: |
           cd lambda/generate_presigned_url
           pip install -r requirements.txt -t python
@@ -35,8 +35,8 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
       - name: "Debug: Current directory and files"
@@ -46,10 +46,10 @@ jobs:
 
       - name: Verify ZIP exists
         run: |
-          if [ ! -f $(pwd)/generate_presigned_url_handler_lambda.zip ]; then echo "ZIP not found"; exit 1; fi
+          if [ ! -f $(pwd)/generate_presigned_url_handler_lambda.zip ]; then echo "generate_presigned_url_handler_lambda.zip does not exist"; exit 1; fi
 
-      - name: Deploy generate_presigned_url_handler to AWS Lambda
+      - name: Deploy generate_presigned_url to AWS Lambda
         run: |
           aws lambda update-function-code \
-            --function-name generate_presigned_url_handler \
+            --function-name generate_presigned_url \
             --zip-file fileb://$(pwd)/generate_presigned_url_handler_lambda.zip

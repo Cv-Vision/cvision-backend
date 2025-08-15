@@ -1,4 +1,4 @@
-name: Deploy to AWS Lambda - update-job-posting
+name: Deploy to AWS Lambda - update_job_posting
 
 on:
   push:
@@ -12,7 +12,7 @@ on:
 
 jobs:
   deploy:
-    name: update-job-posting_handler
+    name: deploy_update_job_posting
     runs-on: ubuntu-latest
 
     steps:
@@ -24,19 +24,19 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Install dependencies and package Lambda for update-job-posting_handler
+      - name: Install dependencies and package Lambda for update_job_posting
         run: |
           cd lambda/update_job_posting
           pip install -r requirements.txt -t python  
-          cp update-job-posting_handler.py python/ 
+          cp update_job_posting_handler.py python/ 
           cd python
-          zip -r ../../../update-job-posting_lambda.zip .
+          zip -r ../../../update_job_posting_handler_lambda.zip .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
       - name: "Debug: Current directory and files"
@@ -44,12 +44,12 @@ jobs:
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify update-job-posting_lambda.zip exists
+      - name: Verify update_job_posting_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)/update-job-posting_lambda.zip ]; then echo "update-job-posting_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/update_job_posting_handler_lambda.zip ]; then echo "update_job_posting_handler_lambda.zip does not exist"; exit 1; fi
 
       - name: Deploy update-job-posting to AWS Lambda
         run: |
           aws lambda update-function-code \
             --function-name update_job_posting \
-            --zip-file fileb://$(pwd)/update-job-posting_lambda.zip
+            --zip-file fileb://$(pwd)/update_job_posting_handler_lambda.zip
