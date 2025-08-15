@@ -1,0 +1,55 @@
+name: Deploy to AWS Lambda - post_confirmation_sign_up
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  deploy:
+    name: deploy_post_confirmation_sign_up
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Install dependencies and package Lambda for post_confirmation_sign_up
+        run: |
+          cd lambda/post_confirmation_sign_up
+          pip install -r requirements.txt -t python  
+          cp post_confirmation_sign_up_handler.py python/ 
+          cd python
+          zip -r ../../../post_confirmation_sign_up_handler_lambda.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l
+
+      - name: Verify post_confirmation_sign_up_handler_lambda.zip exists
+        run: |
+          if [ ! -f $(pwd)/post_confirmation_sign_up_handler_lambda.zip ]; then echo "post_confirmation_sign_up_handler_lambda.zip does not exist"; exit 1; fi
+
+      - name: Deploy post_confirmation_sign_up to AWS Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name post_confirmation_sign_up \
+            --zip-file fileb://$(pwd)/post_confirmation_sign_up_handler_lambda.zip
