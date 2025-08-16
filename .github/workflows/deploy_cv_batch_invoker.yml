@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'cv_batch_invoker/**'
+      - 'lambda/cv_batch_invoker/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'cv_batch_invoker/**'
+      - 'lambda/cv_batch_invoker/**'
 
 jobs:
   deploy:

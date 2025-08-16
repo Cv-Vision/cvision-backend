@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'cv_upload/**'
+      - 'lambda/cv_upload/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'cv_upload/**'
+      - 'lambda/cv_upload/**'
 
 jobs:
   deploy:

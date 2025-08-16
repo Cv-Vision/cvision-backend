@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'update_job_posting/**'
+      - 'lambda/update_job_posting/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'update_job_posting/**'
+      - 'lambda/update_job_posting/**'
 
 jobs:
   deploy:

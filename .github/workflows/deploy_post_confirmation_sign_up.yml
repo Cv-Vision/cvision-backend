@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'post_confirmation_sign_up/**'
+      - 'lambda/post_confirmation_sign_up/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'post_confirmation_sign_up/**'
+      - 'lambda/post_confirmation_sign_up/**'
 
 jobs:
   deploy:

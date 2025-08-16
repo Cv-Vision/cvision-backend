@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'set_candidate_rating/**'
+      - 'lambda/set_candidate_rating/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'set_candidate_rating/**'
+      - 'lambda/set_candidate_rating/**'
 
 jobs:
   deploy:

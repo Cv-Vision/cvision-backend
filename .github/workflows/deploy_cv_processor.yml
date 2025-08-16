@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'cv_processor/**'
+      - 'lambda/cv_processor/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'cv_processor/**'
+      - 'lambda/cv_processor/**'
 
 jobs:
   deploy:

@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'get_cvs_analysis_results/**'
+      - 'lambda/get_cvs_analysis_results/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'get_cvs_analysis_results/**'
+      - 'lambda/get_cvs_analysis_results/**'
 
 jobs:
   deploy:

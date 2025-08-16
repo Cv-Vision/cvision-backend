@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'get_candidates_by_job_id/**'
+      - 'lambda/get_candidates_by_job_id/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'get_candidates_by_job_id/**'
+      - 'lambda/get_candidates_by_job_id/**'
 
 jobs:
   deploy:

@@ -6,13 +6,13 @@ on:
       - master
       - dev
     paths:
-      - 'generate_presigned_url/**'
+      - 'lambda/generate_presigned_url/**'
   pull_request:
     branches:
       - master
       - dev
     paths:
-      - 'generate_presigned_url/**'
+      - 'lambda/generate_presigned_url/**'
 
 jobs:
   deploy:
