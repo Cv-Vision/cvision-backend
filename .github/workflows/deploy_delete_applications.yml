@@ -46,7 +46,7 @@ jobs:
 
       - name: Verify delete_applications_handler_lambda.zip exists
         run: |
-          if [ ! -f $(pwd)delete_applications_handler_lambda.zip ]; then echo "delete_applications_handler_lambda.zip does not exist"; exit 1; fi
+          if [ ! -f $(pwd)/delete_applications_handler_lambda.zip ]; then echo "delete_applications_handler_lambda.zip does not exist"; exit 1; fi
 
       - name: Deploy delete_applications to AWS Lambda
         run: |
