@@ -1,13 +1,13 @@
 import json
-import time
 import boto3
 import os
-import uuid
 from db_handler import get_session
 from models import JobPosting
 from sqlalchemy.orm.exc import NoResultFound
 
-lambda_client = boto3.client("lambda")
+sqs = boto3.client("sqs")
+sqs_queue_url = os.environ.get("SQS_QUEUE_URL")
+
 s3 = boto3.client("s3")
 
 MAX_REQUESTS_PER_MINUTE = 10
@@ -106,29 +106,22 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": "No se encontraron archivos para procesar en el bucket"})
         }
 
-    # Process the CV files in batches
-    for i in range(0, len(cv_files), MAX_REQUESTS_PER_MINUTE):
-        batch = cv_files[i:i + MAX_REQUESTS_PER_MINUTE]
-        print(f"Procesando batch {i // MAX_REQUESTS_PER_MINUTE + 1}: {batch}")
+    # Use SQS to send messages for each CV file.
+    # This replaces the time.sleep() and direct Lambda invocation.
+    for key in cv_files:
+        payload = {
+            "bucket": cv_bucket,
+            "cv_key": key,
+            "job_id": job_id,
+            "user_id": user_id
+        }
 
-        for key in batch:
-            payload = {
-                "bucket": cv_bucket,
-                "cv_key": key,
-                "job_id": job_id,
-                "user_id": user_id
-            }
-
-            lambda_client.invoke(
-                FunctionName="cv-processor",
-                InvocationType="Event",
-                Payload=json.dumps(payload)
-            )
-            print(f"✅ Invocado cv_processor para: {key}")
-
-        if i + MAX_REQUESTS_PER_MINUTE < len(cv_files):
-            print(f"⏳ Esperando {DELAY_SECONDS} segundos para el próximo batch...")
-            time.sleep(DELAY_SECONDS)
+        # Send a message to the SQS queue
+        sqs.send_message(
+            QueueUrl=sqs_queue_url,
+            MessageBody=json.dumps(payload)
+        )
+        print(f"✅ Enviado mensaje a SQS para el CV: {key}")
 
     return {
         "statusCode": 200,
@@ -136,5 +129,5 @@ def lambda_handler(event, context):
             **CORS_HEADERS,
             "Content-Type": "application/json"
         },
-        "body": json.dumps({"message": "Todos los CVs enviados a procesamiento"})
+        "body": json.dumps({"message": "Todos los CVs enviados a la cola para procesamiento"})
     }

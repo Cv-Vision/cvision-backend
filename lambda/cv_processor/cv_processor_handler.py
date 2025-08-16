@@ -5,51 +5,54 @@ import boto3
 import fitz
 import PIL.Image
 from io import BytesIO
-from datetime import datetime
 import google.generativeai as genai
 import hashlib
 
+# Import ORM session handler and models
+from db_handler import get_session
+from models import JobPosting, JobApplication, CVAnalysisResult
+
+# Configure Gemini API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 s3 = boto3.client("s3")
-dynamodb = boto3.resource('dynamodb')
-
-job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
-results_table = dynamodb.Table(os.environ["CV_ANALYSIS_RESULTS_TABLE"])
-job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
 
 cv_bucket = os.environ["CV_BUCKET"]
 results_bucket = os.environ["RESULTS_BUCKET"]
 
-def save_job_application(job_id, cv_id, name, output_s3_key, score, upload_key):
-    pk = f"JD#{job_id}" if not job_id.startswith("JD#") else job_id
-    sk = f"CV#{cv_id}"
-
+def save_or_update_job_application(session, job_id, user_id, name, score, upload_key, cv_hash):
+    """
+    Saves or updates a JobApplication entry using the ORM.
+    """
     try:
-        print(f"💾 Guardando/actualizando JobApplication para {pk} - {sk}")
-        job_applications_table.update_item(
-            Key={"pk": pk, "sk": sk},
-            UpdateExpression="""
-                SET #n = :name,
-                    cv_s3_key = :s3key,
-                    cv_upload_key = :uploadkey,
-                    score = :score,
-                    created_at = :created
-            """,
-            ExpressionAttributeNames={"#n": "name"},
-            ExpressionAttributeValues={
-                ":name": name,
-                ":s3key": output_s3_key,
-                ":uploadkey": upload_key,
-                ":score": score,
-                ":created": datetime.utcnow().isoformat()
-            }
-        )
-        print("✅ JobApplication actualizado")
-    except Exception as e:
-        print("❌ Error al guardar JobApplication:", str(e))
+        # Check if an application already exists based on the CV hash
+        existing_application = session.query(JobApplication).filter(
+            JobApplication.cv_hash == cv_hash
+        ).first()
 
+        if existing_application:
+            print(f"🔄 Existing JobApplication found for hash {cv_hash}. Updating...")
+            existing_application.name = name
+            existing_application.cv_upload_key = upload_key
+            existing_application.score = score
+            session.add(existing_application)
+            return existing_application
+        else:
+            print(f"💾 Saving new JobApplication for job_id: {job_id}")
+            new_application = JobApplication(
+                job_posting_id=job_id,
+                user_id=user_id,
+                cv_upload_key=upload_key,
+                cv_hash=cv_hash,
+                score=score,
+                name=name
+            )
+            session.add(new_application)
+            return new_application
+    except Exception as e:
+        print("❌ Error saving/updating JobApplication:", str(e))
+        raise # Re-raise the exception to trigger rollback
 
 # Function to calculate SHA-256 hash of file bytes -> this is to generate a unique identifier for the CV
 def calculate_sha256(file_bytes):
@@ -76,8 +79,11 @@ def image_file_to_bytes(image_bytes):
 
 
 def lambda_handler(event, context):
+    print("Event:", event)
+    # Get a database session from the connection layer
+    session = get_session()
+
     try:
-        print("📥 Event:", event)
         # Parse request body
         if "body" in event and event["body"]:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
@@ -95,18 +101,19 @@ def lambda_handler(event, context):
         # Calculate cv_id SHA256 based on file bytes (unique identifier)
         cv_id = calculate_sha256(cv_bytes)
 
-        # Check if a result already exists
-        existing = results_table.get_item(Key={
-            "pk": f"RESULT#{job_id}#CV#{cv_id}",
-            "sk": f"RECRUITER#{user_id}#CV#{cv_id}"
-        })
-        if "Item" in existing:
-            print("📦 Resultado ya existe. Se omite análisis.")
-            output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
+        # Check for existing result using ORM query
+        existing_result = session.query(CVAnalysisResult).filter(
+            CVAnalysisResult.cv_hash == cv_id,
+            CVAnalysisResult.job_posting_id == job_id
+        ).first()
+
+        if existing_result:
+            print("Result already exists. Skipping analysis.")
+            output_key = existing_result.s3_key
             return {
                 "statusCode": 200,
                 "body": json.dumps({
-                    "message": "Análisis ya existía. No se volvió a procesar.",
+                    "message": "Analysis already existed. No re-processing.",
                     "result_s3_path": f"s3://{results_bucket}/{output_key}",
                     "recruiter_id": user_id
                 })
@@ -121,43 +128,41 @@ def lambda_handler(event, context):
         else:
             return {"statusCode": 400, "body": json.dumps({"error": "Formato no soportado"})}
 
-        # Get job description from DynamoDB
-        result = job_table.get_item(Key={
-            "pk": job_id if job_id.startswith("JD#") else f"JD#{job_id}",
-            "sk": f"USER#{user_id}"
-        })
-        item = result.get("Item")
-        if not item:
-            return {"statusCode": 404, "body": json.dumps({"error": "Job description no encontrada"})}
+        # Get job description from DB
+        job_posting = session.query(JobPosting).filter(
+            JobPosting.posting_id == job_id,
+            JobPosting.created_by_user_id == user_id
+        ).first()
 
-        job_description = item["description"]
+        if not job_posting:
+            return {"statusCode": 404,
+                    "body": json.dumps({"error": "Job description not found or doesn't belong to the user"})}
+
+        job_description = job_posting.description
 
         # Extract optional requirements
-        experience_level = item.get("experience_level")
-        english_level = item.get("english_level")
-        industry_experience = item.get("industry_experience")
-        contract_type = item.get("contract_type")
-        additional_requirements = item.get("additional_requirements")
+        experience_level = job_posting.experience_level
+        english_level = job_posting.english_level
+        industry_experience = job_posting.industry_experience
+        contract_type = job_posting.contract_type
+        additional_requirements = job_posting.additional_requirements
 
         # Create a section of optional requirements for the prompt
         additional_requirements_text = ""
 
+        # The rest of the prompt logic remains unchanged
         if experience_level:
             additional_requirements_text += f"\nNivel de experiencia requerido: {experience_level}"
-
         if english_level:
             additional_requirements_text += f"\nNivel de inglés requerido: {english_level}"
-
         if industry_experience:
             if industry_experience.get("required", False):
                 industry = industry_experience.get("industry", "")
                 additional_requirements_text += f"\nExperiencia en la industria requerida: {industry}"
             else:
                 additional_requirements_text += "\nNo se requiere experiencia específica en la industria."
-
         if contract_type:
             additional_requirements_text += f"\nTipo de contrato: {contract_type}"
-
         if additional_requirements:
             additional_requirements_text += f"\nRequisitos adicionales: {additional_requirements}"
 
@@ -207,14 +212,13 @@ def lambda_handler(event, context):
 
         result_json = response.text
         print("✅ Result obtained from Gemini:", result_json)
-
-        parsed = json.loads(result_json)
+        parsed_result = json.loads(result_json)
 
         # If it's a list, take the first element or process each one
-        if isinstance(parsed, list):
-            parsed = parsed[0]
+        if isinstance(parsed_result, list):
+            parsed_result = parsed_result[0]
 
-        parsed["name"] = parsed["name"].title()
+        parsed_result["name"] = parsed_result["name"].title()
 
         # Save result to S3
         output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
@@ -225,21 +229,28 @@ def lambda_handler(event, context):
             ContentType="application/json"
         )
 
-        # Save result to DynamoDB
-        results_table.put_item(Item={
-            "pk": f"RESULT#{job_id}",
-            "sk": f"RECRUITER#{user_id}#CV#{cv_id}",
-            "job_id": job_id,
-            "name": parsed["name"],
-            "recruiter_id": user_id,
-            "score": parsed["score"],
-            "reasons": parsed.get("reasons", []),
-            "s3_key": output_key,
-            "created_at": datetime.utcnow().isoformat()
-        })
+        # 1. Save the JobApplication first
+        job_application = save_or_update_job_application(
+            session=session,
+            job_id=job_id,
+            user_id=user_id,
+            name=parsed_result["name"],
+            score=parsed_result["score"],
+            upload_key=cv_key,
+            cv_hash=cv_id
+        )
 
-        # Save job application to DynamoDB
-        save_job_application(job_id, cv_id, parsed.get("name"), output_key, parsed.get("score"), cv_key)
+        # 2. Save the CV analysis result, linked to the JobApplication
+        new_analysis_result = CVAnalysisResult(
+            job_application_id=job_application.application_id,
+            analysis_data=parsed_result,
+            s3_key=output_key
+        )
+        session.add(new_analysis_result)
+
+        # Commit all changes to the database in a single transaction
+        session.commit()
+        print("✅ Analysis and application data saved to PostgreSQL")
 
         return {
             "statusCode": 200,
@@ -252,7 +263,12 @@ def lambda_handler(event, context):
 
     except Exception as e:
         print("❌ Error:", str(e))
+        # Rollback the session in case of any error
+        session.rollback()
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)})
         }
+    finally:
+        # Close the database session to clean up resources
+        session.close()
