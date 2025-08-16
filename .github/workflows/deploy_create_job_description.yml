@@ -23,35 +23,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies and package Lambda
-        run: |
-          # Store the root directory path
-          ROOT_DIR=$(pwd)
-
-          # Go to the lambda function directory
-          cd lambda/create_job_description
-
-          # Create the 'python' directory for the lambda package
-          mkdir python
-
-          # Install dependencies inside the 'python' directory
-          pip install -r requirements.txt -t python
-
-          # Copy the entire 'python' folder from the ORM layer to the lambda's 'python' folder
-          cp -r $ROOT_DIR/orm_layer/python/* python/
-
-          # Now copy the lambda handler code to the 'python' directory
-          cp create_job_description_handler.py python/
-
-          # Zip the 'python' directory to create the deployable package
-          cd python
-          zip -r ../../../create_job_description_handler_lambda.zip .
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -59,17 +30,34 @@ jobs:
           aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
-      - name: "Debug: Current directory and files"
+      # Step 1: Get the latest published version of the 'orm-layer'
+      - name: Get latest layer version
+        id: get_layer
         run: |
-          echo "Current directory: $(pwd)"
-          ls -l
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name orm-layer \
+            --query "LayerVersions[0].Version" \
+            --output text)
+          
+          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
 
-      - name: Verify create_job_description_handler_lambda.zip exists
+      # Step 2: Package the lambda handler's code only
+      - name: Package Lambda
         run: |
-          if [ ! -f $(pwd)/create_job_description_handler_lambda.zip ]; then echo "create_job_description_handler_lambda.zip does not exist"; exit 1; fi
+          cd lambda/create_job_description
+          zip ../../create_job_description_handler_lambda.zip create_job_description_handler.py
 
-      - name: Deploy create-job-description to AWS Lambda
+      # Step 3: Update the Lambda function's code
+      - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
             --function-name create_job_description \
-            --zip-file fileb://$(pwd)/create_job_description_handler_lambda.zip
+            --zip-file fileb://$(pwd)/lambda/create_job_description_handler_lambda.zip
+
+      # Step 4: Update the Lambda function's configuration to use the latest layer
+      - name: Update Lambda function configuration
+        run: |
+          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          aws lambda update-function-configuration \
+            --function-name create_job_description \
+            --layers $LAYER_ARN
