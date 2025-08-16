@@ -24,7 +24,6 @@ CORS_HEADERS = {
     "Access-Control-Max-Age": "86400"  # 24 hours
 }
 
-
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
@@ -64,11 +63,10 @@ def lambda_handler(event, context):
         return {"statusCode": 400, "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "Falta job_id en el evento"})}
 
-    # New: Get a database session and handle the query
+    # 1. Get a database session from the connection layer
     session = get_session()
 
     try:
-        # New: Use ORM query to verify job ownership
         job_posting = session.query(JobPosting).filter(
             JobPosting.posting_id == job_id,
             JobPosting.created_by_user_id == user_id
@@ -81,7 +79,7 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": f"El job_id {job_id} no existe o no pertenece al usuario"})
             }
     except Exception as e:
-        # Rollback and close the session in case of an error
+        # Rollback the session in case of any error
         session.rollback()
         return {
             "statusCode": 500,
@@ -89,7 +87,7 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": f"Error al verificar job_id: {str(e)}"})
         }
     finally:
-        # New: Close the database session to release resources
+        # Close the session to clean up resources
         session.close()
 
     # Get the list of CV files in the S3 bucket under the specified prefix (job_id)

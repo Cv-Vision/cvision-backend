@@ -104,7 +104,7 @@ jobs:
       - name: Update Lambda function configuration with both Layers (with retry)
         run: |
           PYMUPDF_LAYER_ARN="${{ env.LAYER_ARN }}"
-          ORM_LAYER_ARN="arn:aws:lambda:us-east-2:***:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          ORM_LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
       
           MAX_RETRIES=5
           COUNT=0
