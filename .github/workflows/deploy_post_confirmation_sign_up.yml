@@ -23,19 +23,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies and package Lambda for post_confirmation_sign_up
-        run: |
-          cd lambda/post_confirmation_sign_up
-          pip install -r requirements.txt -t python  
-          cp post_confirmation_sign_up_handler.py python/ 
-          cd python
-          zip -r ../../../post_confirmation_sign_up_handler_lambda.zip .
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -43,17 +30,45 @@ jobs:
           aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
+      # Step 1: Get the latest published version of the 'orm-layer'
+      - name: Get latest layer version
+        id: get_layer
+        run: |
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name orm-layer \
+            --query "LayerVersions[0].Version" \
+            --output text)
+
+          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+
+      # Step 2: Package the lambda handler's code only
+      - name: Package Lambda
+        run: |
+          # Go to the lambda function directory
+          cd lambda/post_confirmation_sign_up
+          zip -r ../../post_confirmation_sign_up_handler_lambda.zip post_confirmation_sign_up_handler.py
+
       - name: "Debug: Current directory and files"
         run: |
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify post_confirmation_sign_up_handler_lambda.zip exists
-        run: |
-          if [ ! -f $(pwd)/post_confirmation_sign_up_handler_lambda.zip ]; then echo "post_confirmation_sign_up_handler_lambda.zip does not exist"; exit 1; fi
-
-      - name: Deploy post_confirmation_sign_up to AWS Lambda
+      # Step 3: Update the Lambda function's code
+      - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
             --function-name post_confirmation_sign_up \
-            --zip-file fileb://$(pwd)/post_confirmation_sign_up_handler_lambda.zip
+            --zip-file fileb://post_confirmation_sign_up_handler_lambda.zip
+
+      - name: Wait for function update to complete
+        run: |
+          aws lambda wait function-updated \
+          --function-name post_confirmation_sign_up
+
+      # Step 4: Update the Lambda function's configuration to use the latest layer
+      - name: Update Lambda function configuration
+        run: |
+          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          aws lambda update-function-configuration \
+            --function-name post_confirmation_sign_up \
+            --layers $LAYER_ARN
