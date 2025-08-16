@@ -53,7 +53,7 @@ jobs:
           cd lambda
           aws lambda update-function-code \
             --function-name create_job_description \
-            --zip-file fileb://create_job_description_handler_lambda.zip
+            --zip-file fileb://lambda/create_job_description_handler_lambda.zip
 
       # Step 4: Update the Lambda function's configuration to use the latest layer
       - name: Update Lambda function configuration
