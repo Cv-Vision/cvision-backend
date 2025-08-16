@@ -12,7 +12,7 @@ s3 = boto3.client("s3")
 
 MAX_REQUESTS_PER_MINUTE = 10
 DELAY_SECONDS = 60
-cv_bucket = os.environ.get("CV_BUCKET")
+bucket = os.environ.get("BUCKET")
 
 # CORS headers configuration
 # Note: In production, replace the Origin with our actual domain
@@ -46,6 +46,7 @@ def lambda_handler(event, context):
 
     # Parse the request body
     try:
+        print("🔍 Event:", event)
         body = event.get("body")
         if body and isinstance(body, str):
             body = json.loads(body)
@@ -93,7 +94,7 @@ def lambda_handler(event, context):
     # Get the list of CV files in the S3 bucket under the specified prefix (job_id)
     prefix = f"uploads/{job_id}/"
 
-    response = s3.list_objects_v2(Bucket=cv_bucket, Prefix=prefix)
+    response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
     contents = response.get("Contents", [])
     cv_files = [obj["Key"] for obj in contents if not obj["Key"].endswith("/")]
 
@@ -110,7 +111,7 @@ def lambda_handler(event, context):
     # This replaces the time.sleep() and direct Lambda invocation.
     for key in cv_files:
         payload = {
-            "bucket": cv_bucket,
+            "bucket": bucket,
             "cv_key": key,
             "job_id": job_id,
             "user_id": user_id

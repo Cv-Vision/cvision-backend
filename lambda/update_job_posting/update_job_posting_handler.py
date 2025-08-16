@@ -1,74 +1,31 @@
-import boto3
 import json
 import os
-import decimal
 from enum import Enum
+from sqlalchemy import and_
 
-
-# Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
-
-
-# === ENUM for job status ===
-class JobStatus(str, Enum):
-    ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
-    CANCELLED = "CANCELLED"
-    DELETED = "DELETED"
-
-
-# === ENUMS for structured requirements ===
-class ExperienceLevel(str, Enum):
-    JUNIOR = "JUNIOR"
-    SEMISENIOR = "SEMISENIOR"
-    SENIOR = "SENIOR"
-
-
-# === ENUM for english level ===
-class EnglishLevel(str, Enum):
-    BASIC = "BASIC"
-    INTERMEDIATE = "INTERMEDIATE"
-    ADVANCED = "ADVANCED"
-    NATIVE = "NATIVE"
-    NOT_REQUIRED = "NOT_REQUIRED"
-
-
-# === ENUM for contract type ===
-class ContractType(str, Enum):
-    FULL_TIME = "FULL_TIME"
-    PART_TIME = "PART_TIME"
-    CONTRACT = "CONTRACT"
-    FREELANCE = "FREELANCE"
-    INTERNSHIP = "INTERNSHIP"
-
-
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+# Import ORM session handler and models
+from db_handler import get_session
+from enums import JobStatus, ExperienceLevel, EnglishLevel, ContractType
+from models import JobPosting
 
 # CORS headers configuration
-# Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"  # 24 hours
+    "Access-Control-Max-Age": "86400"
 }
 
-
-# Method to handle decimal serialization for JSON
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
         return {
-            "statusCode": 204,  # No content for OPTIONS
+            "statusCode": 204,
             "headers": CORS_HEADERS,
             "body": ""
         }
-    # Get user_id from the event
+
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -79,8 +36,11 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Unauthorized - user_id not found"})
         }
 
+    # Get a database session
+    session = get_session()
+
     try:
-        # Extract job_id from path parameters
+        print("🔍 Event:", event)
         job_id = event.get("pathParameters", {}).get("job_id")
         if not job_id:
             return {
@@ -89,276 +49,140 @@ def lambda_handler(event, context):
                 "body": json.dumps({"message": "Missing job_id in path parameters"})
             }
 
-        # Verify that the event has a body
-        if "body" not in event:
-            return {
-                "statusCode": 400,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "Missing request body"})
-            }
+        body_str = event.get("body", "{}")
+        body = json.loads(body_str) if body_str else {}
 
-        # Parse the body of the event
-        try:
-            body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
-        except json.JSONDecodeError:
-            return {
-                "statusCode": 400,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "Invalid JSON in request body"})
-            }
-
-        # Check if at least one field is provided for update
-        if not any(key in body for key in ["description", "status", "experience_level", "english_level",
-                                           "industry_experience", "contract_type", "additional_requirements", "job_location"]):
+        if not body:
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "At least one field must be provided for update"})
             }
 
-        # Extract all fields from the request body
-        new_description = body.get("description")
-        new_status = body.get("status")
-        new_experience_level = body.get("experience_level")
-        new_english_level = body.get("english_level")
-        new_location = body.get("job_location")
-        new_industry_experience = body.get("industry_experience")
-        new_contract_type = body.get("contract_type")
-        new_additional_requirements = body.get("additional_requirements")
-
-        # Validate description is not empty if provided
-        if new_description is not None and not new_description.strip():
-            return {
-                "statusCode": 400,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"message": "Description cannot be empty"})
-            }
-
-        # Validate experience_level if provided
-        if new_experience_level is not None:
-            try:
-                ExperienceLevel(new_experience_level)  # This will raise ValueError if invalid
-            except ValueError:
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": f"Invalid experience level value: {new_experience_level}"})
-                }
-
-        # Validate job_location if provided
-        if new_location is not None:
-            if not isinstance(new_location, str):
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": "Location must be a string"})
-                }
-
-            if not new_location.strip():
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": "Location cannot be empty"})
-                }
-
-        # Validate english_level if provided
-        if new_english_level is not None:
-            try:
-                EnglishLevel(new_english_level)  # This will raise ValueError if invalid
-            except ValueError:
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": f"Invalid English level value: {new_english_level}"})
-                }
-
-        # Validate industry_experience if provided
-        if new_industry_experience is not None:
-            if not isinstance(new_industry_experience, dict):
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({
-                                           "message": "Industry experience must be an object with 'required' and optional 'industry' fields"})
-                }
-
-            if "required" not in new_industry_experience or not isinstance(new_industry_experience["required"], bool):
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": "Industry experience must include a boolean 'required' field"})
-                }
-
-            if new_industry_experience["required"] and (
-                    "industry" not in new_industry_experience or not new_industry_experience["industry"].strip()):
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps(
-                        {"message": "When industry experience is required, the 'industry' field must be provided"})
-                }
-
-        # Validate contract_type if provided
-        if new_contract_type is not None:
-            try:
-                ContractType(new_contract_type)  # This will raise ValueError if invalid
-            except ValueError:
-                return {
-                    "statusCode": 400,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": f"Invalid contract type value: {new_contract_type}"})
-                }
-
-        # Check if the job posting exists and belongs to the user
-        try:
-            response = table.get_item(
-                Key={
-                    "pk": f"JD#{job_id}",
-                    "sk": f"USER#{user_id}"
-                }
+        # Find the job posting and verify ownership
+        job_posting = session.query(JobPosting).filter(
+            and_(
+                JobPosting.posting_id == job_id,
+                JobPosting.created_by_user_id == user_id
             )
+        ).first()
 
-            if "Item" not in response:
-                return {
-                    "statusCode": 404,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": f"Job posting with ID {job_id} not found"})
-                }
-
-            current_item = response["Item"]
-            current_status = current_item.get("status", "ACTIVE")
-
-            # Restriction logic based on current status
-            # Determine which fields are being updated (excluding status)
-            updating_fields = any([
-                new_description is not None,
-                new_experience_level is not None,
-                new_english_level is not None,
-                new_location is not None,
-                new_industry_experience is not None,
-                new_contract_type is not None,
-                new_additional_requirements is not None
-            ])
-            updating_status = new_status is not None
-
-            if current_status == JobStatus.DELETED:
-                return {
-                    "statusCode": 403,
-                    "headers": CORS_HEADERS,
-                    "body": json.dumps({"message": "Cannot modify, add CVs, or change status of a deleted job posting."})
-                }
-            if current_status == JobStatus.CANCELLED:
-                if updating_fields:
-                    return {
-                        "statusCode": 403,
-                        "headers": CORS_HEADERS,
-                        "body": json.dumps({"message": "Cannot modify or add CVs to a cancelled job posting. Only status change is allowed."})
-                    }
-            if current_status == JobStatus.INACTIVE:
-                # Only restrict adding CVs, which is not handled here, so just a placeholder comment
-                pass  # Field updates and status change are allowed
-            if current_status == JobStatus.ACTIVE:
-                pass  # All updates allowed
-
-            # Prepare update expression and attribute values
-            update_parts = []
-            expression_attribute_values = {}
-            expression_attribute_names = {}
-
-            # Add description update if provided
-            if new_description is not None:
-                update_parts.append("description = :description")
-                expression_attribute_values[":description"] = new_description
-
-            # Add status update if provided
-            if new_status is not None:
-                # Validate status is a valid enum value
-                try:
-                    JobStatus(new_status)  # This will raise ValueError if invalid
-                    update_parts.append("#status = :status")
-                    expression_attribute_values[":status"] = new_status
-                    expression_attribute_names["#status"] = "status"
-                except ValueError:
-                    return {
-                        "statusCode": 400,
-                        "headers": CORS_HEADERS,
-                        "body": json.dumps({"message": f"Invalid status value: {new_status}"})
-                    }
-
-            # Add location update if provided
-            if new_location is not None:
-                update_parts.append("job_location = :job_location")
-                expression_attribute_values[":job_location"] = new_location
-
-            # Add experience_level update if provided
-            if new_experience_level is not None:
-                update_parts.append("experience_level = :experience_level")
-                expression_attribute_values[":experience_level"] = new_experience_level
-
-            # Add english_level update if provided
-            if new_english_level is not None:
-                update_parts.append("english_level = :english_level")
-                expression_attribute_values[":english_level"] = new_english_level
-
-            # Add industry_experience update if provided
-            if new_industry_experience is not None:
-                update_parts.append("industry_experience = :industry_experience")
-                expression_attribute_values[":industry_experience"] = new_industry_experience
-
-            # Add contract_type update if provided
-            if new_contract_type is not None:
-                update_parts.append("contract_type = :contract_type")
-                expression_attribute_values[":contract_type"] = new_contract_type
-
-            # Add additional_requirements update if provided
-            if new_additional_requirements is not None:
-                update_parts.append("additional_requirements = :additional_requirements")
-                expression_attribute_values[":additional_requirements"] = new_additional_requirements
-
-            # Build the update expression
-            update_expression = "SET " + ", ".join(update_parts)
-
-            # Update the job posting
-            update_params = {
-                "Key": {
-                    "pk": f"JD#{job_id}",
-                    "sk": f"USER#{user_id}"
-                },
-                "UpdateExpression": update_expression,
-                "ExpressionAttributeValues": expression_attribute_values,
-                "ReturnValues": "ALL_NEW"
-            }
-
-            # Only include ExpressionAttributeNames if it's not empty
-            if expression_attribute_names:
-                update_params["ExpressionAttributeNames"] = expression_attribute_names
-
-            update_response = table.update_item(**update_params)
-
-            updated_item = update_response.get("Attributes", {})
-
+        if not job_posting:
             return {
-                "statusCode": 200,
-                "headers": {
-                    **CORS_HEADERS,
-                    "Content-Type": "application/json"
-                },
-                "body": json.dumps({
-                    "message": "Job posting updated successfully",
-                    "jobPosting": updated_item
-                }, default=decimal_default)
-            }
-
-        except Exception as e:
-            return {
-                "statusCode": 500,
+                "statusCode": 404,
                 "headers": CORS_HEADERS,
-                "body": json.dumps({"message": f"Error checking job posting: {str(e)}"})
+                "body": json.dumps({"message": f"Job posting with ID {job_id} not found"})
             }
+
+        # Validation logic
+        if job_posting.status == JobStatus.DELETED:
+            return {
+                "statusCode": 403,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"message": "Cannot modify a deleted job posting."})
+            }
+
+        # Update attributes directly from the body if they exist
+        if "description" in body:
+            new_description = body["description"]
+            if not isinstance(new_description, str) or not new_description.strip():
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Description cannot be empty or not a string"})}
+            job_posting.description = new_description
+
+        if "status" in body:
+            new_status = body["status"]
+            try:
+                JobStatus(new_status)
+                job_posting.status = new_status
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid status value: {new_status}"})}
+
+        if "experience_level" in body:
+            new_experience_level = body["experience_level"]
+            try:
+                ExperienceLevel(new_experience_level)
+                job_posting.experience_level = new_experience_level
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid experience level value: {new_experience_level}"})}
+
+        if "english_level" in body:
+            new_english_level = body["english_level"]
+            try:
+                EnglishLevel(new_english_level)
+                job_posting.english_level = new_english_level
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid English level value: {new_english_level}"})}
+
+        if "job_location" in body:
+            new_location = body["job_location"]
+            if not isinstance(new_location, str) or not new_location.strip():
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Location cannot be empty or not a string"})}
+            job_posting.location = new_location
+
+        if "industry_experience" in body:
+            new_industry_experience = body["industry_experience"]
+            if not isinstance(new_industry_experience, dict) or "required" not in new_industry_experience:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "Invalid industry_experience format"})}
+            job_posting.industry_experience = new_industry_experience
+
+        if "contract_type" in body:
+            new_contract_type = body["contract_type"]
+            try:
+                ContractType(new_contract_type)
+                job_posting.contract_type = new_contract_type
+            except ValueError:
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": f"Invalid contract type value: {new_contract_type}"})}
+
+        if "additional_requirements" in body:
+            new_additional_requirements = body["additional_requirements"]
+            if not isinstance(new_additional_requirements, dict):
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "additional_requirements must be an object"})}
+            job_posting.additional_requirements = new_additional_requirements
+
+        # Commit all changes in a single transaction
+        session.commit()
+
+        updated_item = {
+            "posting_id": str(job_posting.posting_id),
+            "created_by_user_id": job_posting.created_by_user_id,
+            "title": job_posting.title,
+            "description": job_posting.description,
+            "location": job_posting.location,
+            "experience_level": job_posting.experience_level,
+            "english_level": job_posting.english_level,
+            "contract_type": job_posting.contract_type,
+            "industry_experience": job_posting.industry_experience,
+            "additional_requirements": job_posting.additional_requirements,
+            "status": job_posting.status,
+            "created_at": job_posting.created_at.isoformat() if job_posting.created_at else None
+        }
+
+        return {
+            "statusCode": 200,
+            "headers": {
+                **CORS_HEADERS,
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                "message": "Job posting updated successfully",
+                "jobPosting": updated_item
+            })
+        }
 
     except Exception as e:
+        session.rollback()
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
             "body": json.dumps({"message": f"Internal server error: {str(e)}"})
         }
+    finally:
+        session.close()

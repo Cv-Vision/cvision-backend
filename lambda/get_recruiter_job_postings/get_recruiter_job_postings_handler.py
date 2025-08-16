@@ -1,29 +1,28 @@
-import boto3
 import json
 import os
-import decimal
+import boto3
 
-dynamodb = boto3.resource('dynamodb')
-table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+# Import ORM session handler and models
+from db_handler import get_session
+from models import JobPosting
 
 # CORS headers configuration
-# Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"  # 24 hours
+    "Access-Control-Max-Age": "86400"
 }
 
-# Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
-
 def lambda_handler(event, context):
-    # Get user_id from the event
+    # Handle CORS preflight request
+    if event.get("httpMethod") == "OPTIONS":
+        return {
+            "statusCode": 204,
+            "headers": CORS_HEADERS
+        }
+
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -34,27 +33,47 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Unauthorized - user_id not found"})
         }
 
-    # Build the query to get all job descriptions for the user
+    # Get a database session
+    session = get_session()
+
     try:
-        response = table.query(
-            IndexName='sk-index',
-            KeyConditionExpression="sk = :sk", # Using the secondary index for sk
-            ExpressionAttributeValues={
-                ":sk": f"USER#{user_id}"
-            }
-        )
-        items = response.get('Items', [])
+        print("🔍 Event:", event)
+        # Query all job postings for the user
+        job_postings = session.query(JobPosting).filter(
+            JobPosting.created_by_user_id == user_id
+        ).all()
+
+        # Format the results to return as JSON
+        items = []
+        for job in job_postings:
+            items.append({
+                "posting_id": str(job.posting_id),
+                "created_by_user_id": job.created_by_user_id,
+                "title": job.title,
+                "description": job.description,
+                "location": job.location,
+                "experience_level": job.experience_level,
+                "english_level": job.english_level,
+                "contract_type": job.contract_type,
+                "industry_experience": job.industry_experience,
+                "additional_requirements": job.additional_requirements,
+                "status": job.status,
+                "created_at": job.created_at.isoformat() if job.created_at else None
+            })
 
         return {
             "statusCode": 200,
-            "body": json.dumps(items, default=decimal_default),
+            "body": json.dumps(items),
             "headers": {
                 **CORS_HEADERS,
                 "Content-Type": "application/json"
             },
         }
     except Exception as e:
+        session.rollback()
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
+    finally:
+        session.close()

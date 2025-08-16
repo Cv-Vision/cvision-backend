@@ -1,41 +1,29 @@
-import boto3
-import os
 import json
-import decimal
+import os
+import boto3
 
-# Initialize DynamoDB resources
-dynamodb = boto3.resource('dynamodb')
-cv_results_table = dynamodb.Table(os.environ['CV_ANALYSIS_RESULTS_TABLE'])
-job_postings_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+# Import ORM session handler and models
+from db_handler import get_session
+from models import JobPosting, CVAnalysisResult
 
 # CORS headers configuration
-# Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"  # 24 hours
+    "Access-Control-Max-Age": "86400"
 }
-
-
-# Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
-
 
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
         return {
-            "statusCode": 204,  # No content for OPTIONS
+            "statusCode": 204,
             "headers": CORS_HEADERS,
             "body": ""
         }
 
-    # Get user_id from Cognito claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -55,58 +43,58 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Missing job_id"})
         }
 
-    # Verify that the job_id belongs to this user
+    # Get a database session
+    session = get_session()
+
     try:
-        response = job_postings_table.get_item(
-            Key={"pk": f"JD#{job_id}", "sk": f"USER#{user_id}"}
-        )
-        if "Item" not in response:
+        print("🔍 Event:", event)
+        # Verify that the job_id belongs to this user
+        job_posting = session.query(JobPosting).filter(
+            JobPosting.posting_id == job_id,
+            JobPosting.created_by_user_id == user_id
+        ).first()
+
+        if not job_posting:
             return {
                 "statusCode": 403,
                 "headers": CORS_HEADERS,
                 "body": json.dumps({"message": "You do not own this job posting"})
             }
-    except Exception as e:
-        return {
-            "statusCode": 500,
-            "headers": CORS_HEADERS,
-            "body": json.dumps({"error": f"Failed ownership check: {str(e)}"})
-        }
 
-    # Fetch CV analysis results from CVAnalysisResults table
-    try:
-        results = cv_results_table.query(
-            KeyConditionExpression="pk = :pk",
-            ExpressionAttributeValues={":pk": f"RESULT#JD#{job_id}"}
-        )
-        items = results.get("Items", [])
+        # Fetch CV analysis results from DB
+        results = session.query(CVAnalysisResult).filter(
+            CVAnalysisResult.job_posting_id == job_id
+        ).all()
 
-        # Format the results to include only the necessary fields
         formatted = [
             {
-                "job_id": job_id,
-                "name": item.get("name"),
-                "score": item.get("score"),
-                "reasons": item.get("reasons", []),
-                "created_at": item.get("created_at")
+                # Access attributes directly from the ORM object
+                "analysis_id": str(item.analysis_id),
+                "job_id": item.job_posting_id,
+                "name": item.analysis_data.get("name"),
+                "score": item.analysis_data.get("score"),
+                "reasons": item.analysis_data.get("reasons", []),
+                "created_at": item.generated_at.isoformat() if item.generated_at else None
             }
-            for item in items
+            for item in results
         ]
 
-        # Return successful response with CORS headers and formatted data
         return {
             "statusCode": 200,
             "headers": {
                 **CORS_HEADERS,
                 "Content-Type": "application/json"
             },
-            "body": json.dumps(formatted, default=decimal_default)
+            "body": json.dumps(formatted)
         }
 
     except Exception as e:
-        # Return error response with CORS headers
+        print("❌ Error fetching results:", str(e))
+        session.rollback()
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
             "body": json.dumps({"error": f"Error fetching results: {str(e)}"})
         }
+    finally:
+        session.close()

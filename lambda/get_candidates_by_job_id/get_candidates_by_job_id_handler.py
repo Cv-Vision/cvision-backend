@@ -1,27 +1,19 @@
-import os
 import json
+import os
 import boto3
-from boto3.dynamodb.conditions import Key
-import decimal
 
-dynamodb = boto3.resource("dynamodb")
-job_applications_table = dynamodb.Table(os.environ["JOB_APPLICATIONS_TABLE"])
+# Import ORM session handler and models
+from db_handler import get_session
+from models import JobPosting, JobApplication
 
 # CORS headers configuration
-# Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"  # 24 hours
+    "Access-Control-Max-Age": "86400"
 }
-
-# Method to handle decimal serialization for JSON
-def decimal_default(obj):
-    if isinstance(obj, decimal.Decimal):
-        return float(obj)
-    raise TypeError
 
 def lambda_handler(event, context):
     # Handle CORS preflight request
@@ -30,7 +22,7 @@ def lambda_handler(event, context):
             "statusCode": 204,
             "headers": CORS_HEADERS
         }
-    # Get user_id from the event
+
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
     if not user_id:
@@ -39,10 +31,11 @@ def lambda_handler(event, context):
             "body": json.dumps({"error": "Usuario no autenticado"})
         }
 
+    # Get a database session
+    session = get_session()
+
     try:
         print("🔍 Event:", event)
-
-        # ✅ Extract job_id from the path parameters
         job_id = event.get("pathParameters", {}).get("job_id")
         if not job_id:
             return {
@@ -51,22 +44,33 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": "Falta job_id"})
             }
 
-        pk = f"JD#{job_id}"
+        # Verify that the user owns the job posting
+        job_posting = session.query(JobPosting).filter(
+            JobPosting.posting_id == job_id,
+            JobPosting.created_by_user_id == user_id
+        ).first()
 
-        # Query by partition key (pk) -> job_id
-        response = job_applications_table.query(
-            KeyConditionExpression=Key("pk").eq(pk)
-        )
+        if not job_posting:
+            return {
+                "statusCode": 403,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"error": "No tienes permiso para ver esta información"})
+            }
+
+        # Query job applications for the given job_id
+        applications = session.query(JobApplication).filter(
+            JobApplication.job_posting_id == job_id
+        ).all()
 
         candidates = []
-        for item in response.get("Items", []):
+        for app in applications:
             candidates.append({
-                "cv_id": item["sk"].replace("CV#", ""),
-                "name": item.get("name"),
-                "cv_s3_key": item.get("cv_s3_key"),
-                "created_at": item.get("created_at"),
-                "score": item.get("score"),
-                "valoracion": item.get("valoracion")
+                # Access attributes directly from the ORM object
+                "application_id": str(app.application_id),
+                "name": app.name,
+                "cv_upload_key": app.cv_upload_key,
+                "created_at": app.created_at.isoformat() if app.created_at else None,
+                "score": app.score
             })
 
         return {
@@ -76,14 +80,17 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json"
             },
             "body": json.dumps(
-                {"job_id": job_id, "candidates": candidates},
-                default=decimal_default)
+                {"job_id": job_id, "candidates": candidates}
+            )
         }
 
     except Exception as e:
         print("❌ Error:", str(e))
+        session.rollback()
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
             "body": json.dumps({"error": str(e)})
         }
+    finally:
+        session.close()

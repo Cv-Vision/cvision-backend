@@ -16,12 +16,11 @@ CORS_HEADERS = {
 }
 
 def create_job_posting_handler(event, context):
-    print("DEBUG EVENT:", json.dumps(event))
-
-    # 1. Get a database session from the connection layer
+    # Get a database session from the connection layer
     session = get_session()
 
     try:
+        print("🔍 Event:", event)
         # Verify that the event has a body
         if "body" not in event:
             return {

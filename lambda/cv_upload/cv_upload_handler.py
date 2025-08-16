@@ -3,7 +3,7 @@ import boto3
 import os
 
 s3 = boto3.client("s3")
-bucket_name = os.environ["UPLOADS_BUCKET"]  # Tu bucket S3 donde guardás CVs
+bucket = os.environ["UPLOADS_BUCKET"]
 
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
@@ -23,6 +23,7 @@ def lambda_handler(event, context):
         return {"statusCode": 401, "headers": CORS_HEADERS, "body": json.dumps({"message": "Unauthorized"})}
 
     try:
+        print("🔍 Event:", event)
         body = json.loads(event.get("body") or "{}")
         filename = body.get("filename")
         if not filename:
@@ -33,7 +34,7 @@ def lambda_handler(event, context):
         url = s3.generate_presigned_url(
             ClientMethod="put_object",
             Params={
-                "Bucket": bucket_name,
+                "Bucket": bucket,
                 "Key": s3_key,
                 "ContentType": "application/pdf"  # o dinámico según extensión
             },

@@ -2,29 +2,21 @@ import json
 import boto3
 import os
 import re
-from enum import Enum
-
-# === ENUM for job status ===
-class JobStatus(str, Enum):
-    ACTIVE = "ACTIVE"
-    INACTIVE = "INACTIVE"
-    CANCELLED = "CANCELLED"
-    DELETED = "DELETED"
+from db_handler import get_session
+from enums import JobStatus
+from models import JobPosting
+from sqlalchemy import or_
 
 s3 = boto3.client('s3')
-cv_bucket = os.environ["CV_BUCKET"]
-
-dynamodb = boto3.resource('dynamodb')
-job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
+bucket = os.environ["BUCKET"]
 
 # CORS headers configuration
-# Note: In production, replace the Origin with our actual domain
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "http://localhost:3000",
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"  # 24 hours
+    "Access-Control-Max-Age": "86400"
 }
 
 def sanitize_filename(name):
@@ -38,32 +30,42 @@ def get_content_type(filename: str) -> str:
         "jpeg": "image/jpeg", # .jpeg files
         "png": "image/png" # .png files
     }
-    return mapping.get(ext, "application/octet-stream")  # fallback to binary stream if unknown
+    return mapping.get(ext, "application/octet-stream")
 
-def validate_job_id(job_id, user_id):
+def validate_job_id(session, job_id, user_id):
+    """
+    New: Validates job_id against the PostgreSQL database.
+    """
     try:
-        raw_job_id = job_id.replace("JD#", "") if job_id.startswith("JD#") else job_id
-        pk = f"JD#{raw_job_id}"
-        sk = f"USER#{user_id}"
-        response = job_table.get_item(Key={"pk": pk, "sk": sk})
-        item = response.get("Item")
-        if not item:
+        job_posting = session.query(JobPosting).filter(
+            JobPosting.posting_id == job_id,
+            JobPosting.created_by_user_id == user_id
+        ).first()
+
+        if not job_posting:
+            print("❌ Ownership or existence check failed.")
             return False
-        return item.get("status") != JobStatus.DELETED
+
+        # Check if the job is deleted
+        if job_posting.status == JobStatus.DELETED:
+            print("❌ Job status is DELETED.")
+            return False
+
+        print("✅ Ownership and status confirmed.")
+        return True
     except Exception as e:
-        print(f"Error al consultar DynamoDB: {e}")
+        print(f"Error when validating job_id against PostgreSQL: {e}")
         return False
 
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
     if event.get('httpMethod') == 'OPTIONS':
         return {
-            "statusCode": 204,  # No content for OPTIONS
+            "statusCode": 204,
             "headers": CORS_HEADERS,
             "body": ""
         }
 
-    # Get user_id from Cognito claims
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -74,15 +76,13 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Unauthorized"})
         }
 
+    session = get_session()
+
     try:
-        # Parse the incoming event to get the body
+        print("🔍 Event:", event)
         body = json.loads(event.get('body', '{}'))
-
-        print("DEBUG EVENT:", event)
-        print("DEBUG BODY:", body)
-
         job_id = body.get("job_id")
-        filenames = body.get("filenames")  # We expect an array of filenames
+        filenames = body.get("filenames")
 
         if not job_id or not filenames or not isinstance(filenames, list):
             return {
@@ -91,8 +91,8 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": "Se requiere job_id y un array de filenames"})
             }
 
-        # Validate job_id against DynamoDB
-        if not validate_job_id(job_id, user_id):
+        # New: Validate job_id against PostgreSQL
+        if not validate_job_id(session, job_id, user_id):
             return {
                 "statusCode": 404,
                 "headers": CORS_HEADERS,
@@ -107,7 +107,7 @@ def lambda_handler(event, context):
             url = s3.generate_presigned_url(
                 ClientMethod='put_object',
                 Params={
-                    'Bucket': cv_bucket,
+                    'Bucket': bucket,
                     'Key': key,
                     'ContentType': content_type,
                 },
@@ -133,9 +133,11 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
+        session.rollback()
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
             "body": json.dumps({"error": str(e)})
         }
-
+    finally:
+        session.close()

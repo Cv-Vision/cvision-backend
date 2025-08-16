@@ -18,8 +18,7 @@ model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 s3 = boto3.client("s3")
 
-cv_bucket = os.environ["CV_BUCKET"]
-results_bucket = os.environ["RESULTS_BUCKET"]
+bucket = os.environ["BUCKET"]
 
 def save_or_update_job_application(session, job_id, user_id, name, score, upload_key, cv_hash):
     """
@@ -79,11 +78,11 @@ def image_file_to_bytes(image_bytes):
 
 
 def lambda_handler(event, context):
-    print("Event:", event)
     # Get a database session from the connection layer
     session = get_session()
 
     try:
+        print("🔍 Event:", event)
         # Parse request body
         if "body" in event and event["body"]:
             body = json.loads(event["body"]) if isinstance(event["body"], str) else event["body"]
@@ -95,7 +94,7 @@ def lambda_handler(event, context):
         user_id = body["user_id"]
 
         # Get CV from S3
-        response = s3.get_object(Bucket=cv_bucket, Key=cv_key)
+        response = s3.get_object(Bucket=bucket, Key=cv_key)
         cv_bytes = response["Body"].read()
 
         # Calculate cv_id SHA256 based on file bytes (unique identifier)
@@ -114,7 +113,7 @@ def lambda_handler(event, context):
                 "statusCode": 200,
                 "body": json.dumps({
                     "message": "Analysis already existed. No re-processing.",
-                    "result_s3_path": f"s3://{results_bucket}/{output_key}",
+                    "result_s3_path": f"s3://{bucket}/{output_key}",
                     "recruiter_id": user_id
                 })
             }
@@ -223,7 +222,7 @@ def lambda_handler(event, context):
         # Save result to S3
         output_key = f"results/{job_id}/{user_id}#{cv_id}.json"
         s3.put_object(
-            Bucket=results_bucket,
+            Bucket=bucket,
             Key=output_key,
             Body=result_json.encode("utf-8"),
             ContentType="application/json"
@@ -256,7 +255,7 @@ def lambda_handler(event, context):
             "statusCode": 200,
             "body": json.dumps({
                 "message": "Evaluación completada",
-                "result_s3_path": f"s3://{results_bucket}/{output_key}",
+                "result_s3_path": f"s3://{bucket}/{output_key}",
                 "recruiter_id": user_id
             })
         }

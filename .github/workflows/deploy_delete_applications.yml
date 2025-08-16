@@ -13,7 +13,6 @@ on:
       - dev
     paths:
       - 'lambda/delete_applications/**'
-      -
 jobs:
   deploy:
     name: deploy_delete_applications
