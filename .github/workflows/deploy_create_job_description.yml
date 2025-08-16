@@ -57,7 +57,7 @@ jobs:
       # Step 4: Update the Lambda function's configuration to use the latest layer
       - name: Update Lambda function configuration
         run: |
-          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
           aws lambda update-function-configuration \
             --function-name create_job_description \
             --layers $LAYER_ARN
