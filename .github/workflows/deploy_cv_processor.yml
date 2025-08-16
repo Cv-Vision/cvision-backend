@@ -104,7 +104,7 @@ jobs:
       - name: Update Lambda function configuration with both Layers (with retry)
         run: |
           PYMUPDF_LAYER_ARN="${{ env.LAYER_ARN }}"
-          ORM_LAYER_ARN="${{ env.ORM_LAYER_ARN }}"
+          ORM_LAYER_ARN="${{ env.LAYER_VERSION }}"
       
           MAX_RETRIES=5
           COUNT=0
