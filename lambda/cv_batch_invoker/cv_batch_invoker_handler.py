@@ -2,17 +2,17 @@ import json
 import time
 import boto3
 import os
+import uuid
+from db_handler import get_session
+from models import JobPosting
+from sqlalchemy.orm.exc import NoResultFound
 
 lambda_client = boto3.client("lambda")
+s3 = boto3.client("s3")
 
 MAX_REQUESTS_PER_MINUTE = 10
 DELAY_SECONDS = 60
-
-dynamodb = boto3.resource('dynamodb')
-s3 = boto3.client("s3")
-
 cv_bucket = os.environ.get("CV_BUCKET")
-job_table = dynamodb.Table(os.environ['JOB_POSTINGS_TABLE'])
 
 # CORS headers configuration
 # Note: In production, replace the Origin with our actual domain
@@ -23,6 +23,7 @@ CORS_HEADERS = {
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Max-Age": "86400"  # 24 hours
 }
+
 
 def lambda_handler(event, context):
     # Handle preflight OPTIONS request
@@ -60,26 +61,36 @@ def lambda_handler(event, context):
     job_id = body.get("job_id")
 
     if not job_id:
-        return {"statusCode": 400, "headers": CORS_HEADERS, "body": json.dumps({"message": "Falta job_id en el evento"})}
+        return {"statusCode": 400, "headers": CORS_HEADERS,
+                "body": json.dumps({"message": "Falta job_id en el evento"})}
 
-    # Verify if job_id exists in the DynamoDB table
-    raw_job_id = job_id.replace("JD#", "") if job_id.startswith("JD#") else job_id
-    job_pk = f"JD#{raw_job_id}"
-    job_sk = f"USER#{user_id}"
+    # New: Get a database session and handle the query
+    session = get_session()
+
     try:
-        job_result = job_table.get_item(Key={"pk": job_pk, "sk": job_sk})
-        if "Item" not in job_result:
+        # New: Use ORM query to verify job ownership
+        job_posting = session.query(JobPosting).filter(
+            JobPosting.posting_id == job_id,
+            JobPosting.created_by_user_id == user_id
+        ).first()
+
+        if not job_posting:
             return {
                 "statusCode": 404,
                 "headers": CORS_HEADERS,
                 "body": json.dumps({"message": f"El job_id {job_id} no existe o no pertenece al usuario"})
             }
     except Exception as e:
+        # Rollback and close the session in case of an error
+        session.rollback()
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
             "body": json.dumps({"message": f"Error al verificar job_id: {str(e)}"})
         }
+    finally:
+        # New: Close the database session to release resources
+        session.close()
 
     # Get the list of CV files in the S3 bucket under the specified prefix (job_id)
     prefix = f"uploads/{job_id}/"
@@ -89,7 +100,6 @@ def lambda_handler(event, context):
     cv_files = [obj["Key"] for obj in contents if not obj["Key"].endswith("/")]
 
     print(f"Encontrados {len(cv_files)} archivos para procesar.")
-
 
     if len(cv_files) == 0:
         return {
