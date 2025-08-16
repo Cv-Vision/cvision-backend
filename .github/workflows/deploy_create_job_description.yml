@@ -50,6 +50,7 @@ jobs:
       # Step 3: Update the Lambda function's code
       - name: Update Lambda function code
         run: |
+          cd lambda
           aws lambda update-function-code \
             --function-name create_job_description \
             --zip-file fileb://$(pwd)/lambda/create_job_description_handler_lambda.zip
