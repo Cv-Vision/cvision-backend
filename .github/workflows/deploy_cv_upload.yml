@@ -5,10 +5,14 @@ on:
     branches:
       - master
       - dev
+    paths:
+      - 'cv_upload/**'
   pull_request:
     branches:
       - master
       - dev
+    paths:
+      - 'cv_upload/**'
 
 jobs:
   deploy:

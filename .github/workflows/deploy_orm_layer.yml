@@ -1,0 +1,57 @@
+name: Deploy ORM Lambda Layer
+
+on:
+  push:
+    branches:
+      - master
+      - dev
+    paths:
+      - 'orm_layer/**'
+  pull_request:
+    branches:
+      - master
+      - dev
+    paths:
+      - 'orm_layer/**'
+  
+  # Allows to run the action manually from the GitHub UI.
+  workflow_dispatch:
+
+jobs:
+  deploy-layer:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-2
+
+      # Step 4: Install dependencies and package the layer.
+      - name: Package Lambda Layer
+        run: |
+          echo "Installing dependencies into the layer folder..."
+          pip install SQLAlchemy pg8000 -t ./orm_layer/python/
+          echo "Creating zip file..."
+          cd orm_layer
+          zip -r orm_layer.zip ./python
+
+      # Step 5: Deploy the zip file to AWS Lambda.
+      - name: Deploy Layer to AWS
+        run: |
+          aws lambda publish-layer-version \
+            --layer-name orm-layer \
+            --description "A new version of the ORM layer deployed via GitHub Actions" \
+            --zip-file fileb://orm_layer/orm_layer.zip \
+            --compatible-runtimes python3.13 \
+            --region us-east-2

@@ -5,10 +5,14 @@ on:
     branches:
       - master
       - dev
+    paths:
+      - 'create_job_description/**'
   pull_request:
     branches:
       - master
       - dev
+    paths:
+      - 'create_job_description/**'
 
 jobs:
   deploy:

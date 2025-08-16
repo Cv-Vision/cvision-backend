@@ -5,10 +5,14 @@ on:
     branches:
       - master
       - dev
+    paths:
+      - 'delete_analysis_results/**'
   pull_request:
     branches:
       - master
       - dev
+    paths:
+      - 'delete_analysis_results/**'
 
 jobs:
   deploy:
