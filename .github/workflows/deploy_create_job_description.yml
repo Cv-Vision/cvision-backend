@@ -60,6 +60,11 @@ jobs:
             --function-name create_job_description \
             --zip-file fileb://create_job_description_handler_lambda.zip
 
+      - name: Wait for function update to complete
+        run: |
+          aws lambda wait function-updated \
+          --function-name create_job_description
+
       # Step 4: Update the Lambda function's configuration to use the latest layer
       - name: Update Lambda function configuration
         run: |
