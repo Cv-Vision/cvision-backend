@@ -38,22 +38,27 @@ jobs:
             --layer-name orm-layer \
             --query "LayerVersions[0].Version" \
             --output text)
-          
+
           echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
 
       # Step 2: Package the lambda handler's code only
       - name: Package Lambda
         run: |
+          # Go to the lambda function directory
           cd lambda/create_job_description
-          zip ../../create_job_description_handler_lambda.zip create_job_description_handler.py
+          zip -r ../../create_job_description_handler_lambda.zip create_job_description_handler.py
+
+      - name: "Debug: Current directory and files"
+        run: |
+          echo "Current directory: $(pwd)"
+          ls -l
 
       # Step 3: Update the Lambda function's code
       - name: Update Lambda function code
         run: |
-          cd lambda
           aws lambda update-function-code \
             --function-name create_job_description \
-            --zip-file fileb://create_job_description_handler_lambda.zip
+            --zip-file fileb://lambda/create_job_description_handler_lambda.zip
 
       # Step 4: Update the Lambda function's configuration to use the latest layer
       - name: Update Lambda function configuration
