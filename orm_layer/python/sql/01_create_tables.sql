@@ -5,6 +5,17 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- -----------------------------------------------------------
+-- Table: users
+--
+-- This table stores the users.
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    user_id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL
+);
+
+-- -----------------------------------------------------------
 -- Table: job_postings
 --
 -- This table stores information about job opportunities.
@@ -22,7 +33,12 @@ CREATE TABLE IF NOT EXISTS job_postings (
     industry_experience JSONB,
     additional_requirements JSONB,
     status VARCHAR(50) DEFAULT 'ACTIVE',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Foreign key to link job postings to their creator.
+    CONSTRAINT fk_user
+      FOREIGN KEY (created_by_user_id)
+      REFERENCES users (user_id)
 );
 
 -- -----------------------------------------------------------
@@ -33,6 +49,7 @@ CREATE TABLE IF NOT EXISTS job_postings (
 CREATE TABLE IF NOT EXISTS job_applications (
     application_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     job_posting_id UUID NOT NULL,
+    application_source VARCHAR(50) NOT NULL,
     user_id VARCHAR(255) NOT NULL,
     cv_upload_key VARCHAR(1024),
     cv_hash VARCHAR(255) UNIQUE,
@@ -43,6 +60,12 @@ CREATE TABLE IF NOT EXISTS job_applications (
     CONSTRAINT fk_job_posting
       FOREIGN KEY (job_posting_id)
       REFERENCES job_postings (posting_id)
+      ON DELETE CASCADE,
+
+    -- Foreign key to link applications to a candidate user.
+    CONSTRAINT fk_user_application
+      FOREIGN KEY (user_id)
+      REFERENCES users (user_id)
       ON DELETE CASCADE
 );
 

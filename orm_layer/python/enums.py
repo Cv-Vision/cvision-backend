@@ -24,3 +24,7 @@ class ContractType(str, Enum):
     CONTRACT = "CONTRACT"
     FREELANCE = "FREELANCE"
     INTERNSHIP = "INTERNSHIP"
+
+class UserType(str, Enum):
+    CANDIDATE = "CANDIDATE"
+    RECRUITER = "RECRUITER"
