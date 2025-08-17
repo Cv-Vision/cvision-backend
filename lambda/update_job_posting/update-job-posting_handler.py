@@ -109,7 +109,7 @@ def lambda_handler(event, context):
 
         # Check if at least one field is provided for update
         if not any(key in body for key in ["description", "status", "experience_level", "english_level",
-                                           "industry_experience", "contract_type", "additional_requirements", "job_location"]):
+                                           "industry_experience", "contract_type", "additional_requirements", "job_location", "applicant_questions"]):
             return {
                 "statusCode": 400,
                 "headers": CORS_HEADERS,
@@ -125,6 +125,29 @@ def lambda_handler(event, context):
         new_industry_experience = body.get("industry_experience")
         new_contract_type = body.get("contract_type")
         new_additional_requirements = body.get("additional_requirements")
+        new_applicant_questions = body.get("applicant_questions")
+
+        # Validate applicant_questions if provided
+        if new_applicant_questions is not None:
+            if not isinstance(new_applicant_questions, list):
+                return {
+                    "statusCode": 400,
+                    "headers": CORS_HEADERS,
+                    "body": json.dumps({"message": "applicant_questions must be a list"})
+                }
+            valid_types = {"YES_NO", "OPEN"}
+            filtered_questions = []
+            for q in new_applicant_questions:
+                if not isinstance(q, dict):
+                    continue
+                text = q.get("text", "").strip()
+                qtype = q.get("type")
+                if text and qtype in valid_types:
+                    filtered_questions.append({"text": text, "type": qtype})
+            if filtered_questions:
+                new_applicant_questions = filtered_questions
+            else:
+                new_applicant_questions = None
 
         # Validate description is not empty if provided
         if new_description is not None and not new_description.strip():
@@ -237,7 +260,8 @@ def lambda_handler(event, context):
                 new_location is not None,
                 new_industry_experience is not None,
                 new_contract_type is not None,
-                new_additional_requirements is not None
+                new_additional_requirements is not None,
+                new_applicant_questions is not None
             ])
             updating_status = new_status is not None
 
@@ -314,6 +338,11 @@ def lambda_handler(event, context):
             if new_additional_requirements is not None:
                 update_parts.append("additional_requirements = :additional_requirements")
                 expression_attribute_values[":additional_requirements"] = new_additional_requirements
+
+            # Add applicant_questions update if provided
+            if new_applicant_questions is not None:
+                update_parts.append("applicant_questions = :applicant_questions")
+                expression_attribute_values[":applicant_questions"] = new_applicant_questions
 
             # Build the update expression
             update_expression = "SET " + ", ".join(update_parts)

@@ -140,6 +140,26 @@ def lambda_handler(event, context):
                 return {"statusCode": 400, "headers": CORS_HEADERS,
                         "body": json.dumps({"message": "Location must be a non-empty string"})}
 
+        # Validate applicant_questions if present
+        applicant_questions = body.get("applicant_questions")
+        if applicant_questions is not None:
+            if not isinstance(applicant_questions, list):
+                return {"statusCode": 400, "headers": CORS_HEADERS,
+                        "body": json.dumps({"message": "applicant_questions must be a list"})}
+            valid_types = {"YES_NO", "OPEN"}
+            filtered_questions = []
+            for q in applicant_questions:
+                if not isinstance(q, dict):
+                    continue
+                text = q.get("text", "").strip()
+                qtype = q.get("type")
+                if text and qtype in valid_types:
+                    filtered_questions.append({"text": text, "type": qtype})
+            if filtered_questions:
+                applicant_questions = filtered_questions
+            else:
+                applicant_questions = None
+
         # Generate unique job_id and created_at timestamp
         job_id = str(uuid.uuid4())
         created_at = datetime.utcnow().isoformat()
@@ -167,6 +187,8 @@ def lambda_handler(event, context):
             item["additional_requirements"] = additional_requirements
         if job_location is not None:
             item["job_location"] = job_location
+        if applicant_questions is not None:
+            item["applicant_questions"] = applicant_questions
 
         # Save the item in DynamoDB
         table.put_item(Item=item)
