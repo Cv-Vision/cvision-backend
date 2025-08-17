@@ -19,6 +19,7 @@ class JobPosting(Base):
     posting_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     created_by_user_id = Column(String(255), nullable=False)
     title = Column(String(255), nullable=False)
+    company = Column(String(255))
     description = Column(Text)
     location = Column(String(100))
     experience_level = Column(String(50))
