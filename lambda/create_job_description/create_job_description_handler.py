@@ -4,7 +4,7 @@ from db_handler import get_session
 from models import JobPosting
 from enums import ExperienceLevel, EnglishLevel, ContractType
 
-REQUIRED_FIELDS = ["title", "description"]
+REQUIRED_FIELDS = ["title", "description", "company"]
 
 # CORS headers configuration
 CORS_HEADERS = {
@@ -88,6 +88,7 @@ def create_job_posting_handler(event, context):
         new_posting = JobPosting(
             created_by_user_id=user_id,
             title=body["title"],
+            company=body["company"],
             description=body["description"],
             location=job_location,
             experience_level=experience_level,

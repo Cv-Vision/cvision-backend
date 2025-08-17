@@ -12,7 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS job_postings (
     posting_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_by_user_id VARCHAR(255) NOT NULL,
-    company VARCHAR(255),
+    company VARCHAR(255) NOT NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT,
     location VARCHAR(100),
