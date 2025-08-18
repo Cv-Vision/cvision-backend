@@ -280,6 +280,9 @@ def lambda_handler(event, context):
                 application_source = application_source
             )
 
+            # Flush the session to ensure the JobApplication is saved before linking it to CVAnalysisResult
+            session.flush()
+
             # 2. Save the CV analysis result, linked to the JobApplication
             new_analysis_result = CVAnalysisResult(
                 job_application_id=job_application.application_id,
