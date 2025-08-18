@@ -1,6 +1,5 @@
 import json
 import os
-from enum import Enum
 from sqlalchemy import and_
 
 # Import ORM session handler and models

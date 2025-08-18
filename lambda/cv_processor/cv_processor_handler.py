@@ -12,6 +12,7 @@ import time
 # Import ORM session handler and models
 from db_handler import get_session
 from models import JobPosting, JobApplication, CVAnalysisResult, User
+from enums import UserType
 
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -172,12 +173,12 @@ def lambda_handler(event, context):
                 return {"statusCode": 404,
                         "body": json.dumps({"error": "Job description not found or doesn't belong to the user"})}
 
-            user_role = user_id.role
-            # Determine application source based on user role
-            if user_role == "RECRUITER":
-                application_source = "RECRUITER"
-            else:
-                application_source = "CANDIDATE"
+            user_record = session.query(User).filter(User.user_id == user_id).first()
+            if not user_record:
+                raise Exception(f"User with ID {user_id} not found in users table.")
+
+            # Obtain user role
+            application_source = user_record.role
 
             job_description = job_posting.description
 
