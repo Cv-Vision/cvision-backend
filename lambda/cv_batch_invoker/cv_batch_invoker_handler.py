@@ -2,21 +2,19 @@ import json
 import boto3
 import os
 import time
-import random
 from botocore.exceptions import ClientError
 from db_handler import get_session
 from models import JobPosting
-from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy import NoResultFound
 
-sqs = boto3.client("sqs")
-sqs_queue_url = os.environ.get("SQS_QUEUE_URL")
-
+# --- Boto3 Clients ---
 s3 = boto3.client("s3")
+dynamodb = boto3.resource("dynamodb")
 
-# Gemini API rate limits
-MAX_REQUESTS_PER_MINUTE = 10
-DELAY_SECONDS = 60
-bucket = os.environ.get("BUCKET")
+# --- Environment Variables ---
+bucket_name = os.environ.get("BUCKET")
+table_name = os.environ.get("DYNAMODB_TABLE_NAME")
+tasks_table = dynamodb.Table(table_name)
 
 # CORS headers configuration
 CORS_HEADERS = {
@@ -24,62 +22,15 @@ CORS_HEADERS = {
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Max-Age": "86400"
+    "Access-Control-Max-Age": "86400"  # 24 hours
 }
-
-def send_message_with_retry(sqs_client, queue_url, message_body, delay_seconds=0, max_retries=3):
-    """
-    Send message to SQS with exponential backoff retry logic
-    """
-    for attempt in range(max_retries + 1):
-        try:
-            response = sqs_client.send_message(
-                QueueUrl=queue_url,
-                MessageBody=message_body,
-                DelaySeconds=min(delay_seconds, 900)  # SQS max delay is 15 minutes
-            )
-            return response
-
-        except ClientError as e:
-            error_code = e.response['Error']['Code']
-            if error_code in ['Throttling', 'ServiceUnavailable', 'RequestLimitExceeded']:
-                if attempt < max_retries:
-                    # Exponential backoff with jitter
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)
-                    print(f"⏳ SQS throttled, retrying in {wait_time:.2f}s (attempt {attempt + 1})")
-                    time.sleep(wait_time)
-                    continue
-            print(f"❌ SQS Error: {error_code} - {e.response['Error']['Message']}")
-            raise
-        except Exception as e:
-            print(f"❌ Unexpected error sending to SQS: {str(e)}")
-            if attempt < max_retries:
-                time.sleep(2 ** attempt)
-                continue
-            raise
-
-    raise Exception(f"Failed to send message to SQS after {max_retries + 1} attempts")
-
-
-def calculate_processing_batches(total_files, batch_size=MAX_REQUESTS_PER_MINUTE):
-    """
-    Calculate how to batch files to respect rate limits
-    """
-    batches = []
-    for i in range(0, total_files, batch_size):
-        batch_number = i // batch_size
-        delay_seconds = batch_number * DELAY_SECONDS  # 60 seconds between batches
-        batch_files = list(range(i, min(i + batch_size, total_files)))
-        batches.append({
-            'batch_number': batch_number,
-            'delay_seconds': delay_seconds,
-            'file_indices': batch_files
-        })
-    return batches
-
-
 def lambda_handler(event, context):
-    # Get user_id from the event
+    """
+    This function is triggered by an API Gateway request. It validates the user and job_id,
+    lists all corresponding files in S3, and creates a task for each file in a DynamoDB table
+    with a 'PENDING' status. It responds immediately with a 202 Accepted status.
+    """
+    print(f"Received event: {event}")
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -87,159 +38,103 @@ def lambda_handler(event, context):
         return {
             "statusCode": 401,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"message": "Unauthorized - user_id not found"})
+            "body": json.dumps({"message": "Unauthorized"})
         }
 
-    # Parse the request body
+    # --- Parse and validate request body ---
     try:
-        print("🔍 Event:", event)
-        body = event.get("body")
-        if body and isinstance(body, str):
-            body = json.loads(body)
-        elif not body:
-            body = {}
-    except json.JSONDecodeError:
+        body = json.loads(event.get("body", "{}"))
+        job_id = body.get("job_id")
+        if not job_id:
+            raise ValueError("job_id is a required field.")
+    except (json.JSONDecodeError, ValueError) as e:
         return {
             "statusCode": 400,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"message": "Invalid JSON in request body"})
+            "body": json.dumps({"message": f"Invalid request body: {str(e)}"}),
         }
 
-    # Get job_id from the body
-    job_id = body.get("job_id")
-
-    if not job_id:
-        return {
-            "statusCode": 400,
-            "headers": CORS_HEADERS,
-            "body": json.dumps({"message": "Falta job_id en el evento"})
-        }
-
-    # Get a database session from the connection layer
+    # --- Verify job_id belongs to the user ---
     session = get_session()
-
     try:
-        # Verify job exists and belongs to user
-        job_posting = session.query(JobPosting).filter(
-            JobPosting.posting_id == job_id,
-            JobPosting.created_by_user_id == user_id
-        ).first()
-
-        if not job_posting:
-            return {
-                "statusCode": 404,
-                "headers": CORS_HEADERS,
-                "body": json.dumps({"message": f"El job_id {job_id} no existe o no pertenece al usuario"})
-            }
-
+        print(f"Verifying ownership of job_id '{job_id}' for user '{user_id}'...")
+        # Use .one() to ensure exactly one result is found.
+        # It raises NoResultFound if no job matches, which we catch.
+        session.query(JobPosting).filter_by(
+            posting_id=job_id,
+            created_by_user_id=user_id
+        ).one()
+        print("Verification successful.")
+    except NoResultFound:
+        print("Verification failed: Job not found or does not belong to the user.")
+        return {
+            "statusCode": 404,  # used to hide whether a resource exists
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": "Job posting not found or you do not have permission to access it."}),
+        }
     except Exception as e:
-        session.rollback()
+        # Catch other potential database errors (e.g., connection issues)
+        print(f"A database error occurred during verification: {e}")
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"message": f"Error al verificar job_id: {str(e)}"})
+            "body": json.dumps({"message": "An internal error occurred."}),
         }
     finally:
+        # Always close the session to free up database connections
         session.close()
 
-    # Get the list of CV files in the S3 bucket under the specified prefix (job_id)
     prefix = f"uploads/{job_id}/"
 
     try:
-        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
         contents = response.get("Contents", [])
+        # Filter out folder objects
         cv_files = [obj["Key"] for obj in contents if not obj["Key"].endswith("/")]
 
+        if not cv_files:
+            return {
+                "statusCode": 404,
+                "headers": CORS_HEADERS,
+                "body": json.dumps({"message": "No files found for the specified job_id."}),
+            }
     except ClientError as e:
-        print(f"❌ S3 Error: {e}")
+        print(f"Error accessing S3: {e}")
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"error": f"Error accessing S3 bucket: {str(e)}"})
+            "body": json.dumps({"message": "Failed to list files from storage."}),
         }
 
-    print(f"📁 Encontrados {len(cv_files)} archivos para procesar.")
-
-    if len(cv_files) == 0:
-        return {
-            "statusCode": 404,
-            "headers": CORS_HEADERS,
-            "body": json.dumps({"error": "No se encontraron archivos para procesar en el bucket"})
-        }
-
-    # Calculate processing batches to respect Gemini's rate limits
-    batches = calculate_processing_batches(len(cv_files))
-    total_batches = len(batches)
-    estimated_completion_minutes = total_batches
-
-    print(f"📊 Procesamiento programado en {total_batches} lotes de máximo {MAX_REQUESTS_PER_MINUTE} archivos")
-    print(f"⏱️  Tiempo estimado de completado: ~{estimated_completion_minutes} minutos")
-
-    # Send messages to SQS with calculated delays
-    messages_sent = 0
-    messages_failed = 0
-
-    for batch in batches:
-        batch_number = batch['batch_number']
-        delay_seconds = batch['delay_seconds']
-
-        print(f"📦 Procesando lote {batch_number + 1}/{total_batches} (delay: {delay_seconds}s)")
-
-        for file_index in batch['file_indices']:
-            cv_key = cv_files[file_index]
-
-            payload = {
-                "bucket": bucket,
-                "cv_key": cv_key,
-                "job_id": job_id,
-                "user_id": user_id,
-                "batch_number": batch_number,
-                "file_index": file_index + 1,
-                "total_files": len(cv_files)
-            }
-
-            try:
-                # Send message to SQS with delay to respect rate limits
-                response = send_message_with_retry(
-                    sqs_client=sqs,
-                    queue_url=sqs_queue_url,
-                    message_body=json.dumps(payload),
-                    delay_seconds=delay_seconds
+    # --- Create tasks in DynamoDB using Batch Writer for efficiency ---
+    try:
+        with tasks_table.batch_writer() as batch:
+            for cv_key in cv_files:
+                batch.put_item(
+                    Item={
+                        "job_id": job_id,
+                        "s3_key": cv_key,
+                        "status": "PENDING",
+                        "created_by": user_id,
+                        "created_at": int(time.time()),
+                    }
                 )
+        print(f"Successfully created {len(cv_files)} tasks in DynamoDB for job_id {job_id}.")
+    except ClientError as e:
+        print(f"Error writing to DynamoDB: {e}")
+        return {
+            "statusCode": 500,
+            "headers": CORS_HEADERS,
+            "body": json.dumps({"message": "Failed to create processing tasks."}),
+        }
 
-                print(f"✅ Mensaje enviado para: {cv_key} (MessageId: {response['MessageId'][:8]}...)")
-                messages_sent += 1
-
-            except Exception as e:
-                print(f"❌ Error enviando mensaje para {cv_key}: {str(e)}")
-                messages_failed += 1
-                continue
-
-    # Prepare response with processing summary
-    processing_summary = {
-        "total_files": len(cv_files),
-        "messages_sent": messages_sent,
-        "messages_failed": messages_failed,
-        "total_batches": total_batches,
-        "estimated_completion_minutes": estimated_completion_minutes,
-        "rate_limit": f"{MAX_REQUESTS_PER_MINUTE} requests per minute"
-    }
-
-    if messages_failed > 0:
-        status_code = 207  # Multi-status (partial success)
-        message = f"Procesamiento iniciado con algunos errores: {messages_sent} enviados, {messages_failed} fallidos"
-    else:
-        status_code = 200
-        message = f"Todos los {messages_sent} CVs enviados exitosamente para procesamiento"
-
+    # --- Respond to the client immediately ---
     return {
-        "statusCode": status_code,
-        "headers": {
-            **CORS_HEADERS,
-            "Content-Type": "application/json"
-        },
+        "statusCode": 202,  # The request has been accepted for processing
+        "headers": CORS_HEADERS,
         "body": json.dumps({
-            "message": message,
-            "processing_summary": processing_summary
-        })
+            "message": "Processing job has been accepted and queued.",
+            "job_id": job_id,
+            "files_to_process": len(cv_files),
+        }),
     }
