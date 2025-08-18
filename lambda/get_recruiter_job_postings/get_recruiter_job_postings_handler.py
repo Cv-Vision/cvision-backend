@@ -16,13 +16,6 @@ CORS_HEADERS = {
 }
 
 def lambda_handler(event, context):
-    # Handle CORS preflight request
-    if event.get("httpMethod") == "OPTIONS":
-        return {
-            "statusCode": 204,
-            "headers": CORS_HEADERS
-        }
-
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 
@@ -50,6 +43,7 @@ def lambda_handler(event, context):
                 "posting_id": str(job.posting_id),
                 "created_by_user_id": job.created_by_user_id,
                 "title": job.title,
+                "company": job.company,
                 "description": job.description,
                 "location": job.location,
                 "experience_level": job.experience_level,
@@ -60,6 +54,8 @@ def lambda_handler(event, context):
                 "status": job.status,
                 "created_at": job.created_at.isoformat() if job.created_at else None
             })
+        print("jobs found:", len(items))
+        print("items found:", items)
 
         return {
             "statusCode": 200,
