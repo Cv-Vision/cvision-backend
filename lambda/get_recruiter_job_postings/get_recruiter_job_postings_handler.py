@@ -15,6 +15,7 @@ CORS_HEADERS = {
     "Access-Control-Max-Age": "86400"
 }
 
+
 def lambda_handler(event, context):
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
@@ -29,12 +30,17 @@ def lambda_handler(event, context):
     # Get a database session
     session = None
     try:
-        session = get_session()
-        if session is None:
-            raise Exception("Failed to establish database session")
-
         print("🔍 Event:", event)
         print("🔍 User ID:", user_id)
+        print("🔍 Attempting to get database session...")
+
+        session = get_session()
+        if session is None:
+            print("❌ Database session is None")
+            raise Exception("Failed to establish database session")
+
+        print("✅ Database session established successfully")
+        print("🔍 Starting database query...")
 
         # Query all job postings for the user
         job_postings = session.query(JobPosting).filter(
