@@ -58,14 +58,6 @@ def validate_job_id(session, job_id, user_id):
         return False
 
 def lambda_handler(event, context):
-    # Handle preflight OPTIONS request
-    if event.get('httpMethod') == 'OPTIONS':
-        return {
-            "statusCode": 204,
-            "headers": CORS_HEADERS,
-            "body": ""
-        }
-
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")
 

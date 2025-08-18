@@ -25,14 +25,6 @@ CORS_HEADERS = {
 }
 
 def lambda_handler(event, context):
-    # Handle preflight OPTIONS request
-    if event.get('httpMethod') == 'OPTIONS':
-        return {
-            "statusCode": 204,  # No content for OPTIONS
-            "headers": CORS_HEADERS,
-            "body": ""
-        }
-
     # Get user_id from the event
     claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
     user_id = claims.get("sub")

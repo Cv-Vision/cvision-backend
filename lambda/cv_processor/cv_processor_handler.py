@@ -101,9 +101,11 @@ def lambda_handler(event, context):
         cv_id = calculate_sha256(cv_bytes)
 
         # Check for existing result using ORM query
-        existing_result = session.query(CVAnalysisResult).filter(
-            CVAnalysisResult.cv_hash == cv_id,
-            CVAnalysisResult.job_posting_id == job_id
+        existing_result = session.query(CVAnalysisResult).join(
+            JobApplication, CVAnalysisResult.job_application_id == JobApplication.application_id
+        ).filter(
+            JobApplication.cv_hash == cv_id,
+            JobApplication.job_posting_id == job_id
         ).first()
 
         if existing_result:
