@@ -11,7 +11,7 @@ import time
 
 # Import ORM session handler and models
 from db_handler import get_session
-from models import JobPosting, JobApplication, CVAnalysisResult
+from models import JobPosting, JobApplication, CVAnalysisResult, User
 
 # Configure Gemini API
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -58,7 +58,7 @@ def update_dynamodb_status(job_id, s3_key, status, result=None, error_message=No
     except Exception as e:
         print(f"❌ Failed to update DynamoDB status for {s3_key}: {e}")
 
-def save_or_update_job_application(session, job_id, user_id, name, upload_key, cv_hash):
+def save_or_update_job_application(session, job_id, user_id, application_source, upload_key, cv_hash):
     """
     Saves or updates a JobApplication entry using the ORM.
     """
@@ -70,7 +70,6 @@ def save_or_update_job_application(session, job_id, user_id, name, upload_key, c
 
         if existing_application:
             print(f"🔄 Existing JobApplication found for hash {cv_hash}. Updating...")
-            existing_application.name = name
             existing_application.cv_upload_key = upload_key
             session.add(existing_application)
             return existing_application
@@ -81,7 +80,7 @@ def save_or_update_job_application(session, job_id, user_id, name, upload_key, c
                 user_id=user_id,
                 cv_upload_key=upload_key,
                 cv_hash=cv_hash,
-                name=name
+                application_source=application_source
             )
             session.add(new_application)
             return new_application
@@ -172,6 +171,13 @@ def lambda_handler(event, context):
             if not job_posting:
                 return {"statusCode": 404,
                         "body": json.dumps({"error": "Job description not found or doesn't belong to the user"})}
+
+            user_role = user_id.role
+            # Determine application source based on user role
+            if user_role == "RECRUITER":
+                application_source = "RECRUITER"
+            else:
+                application_source = "CANDIDATE"
 
             job_description = job_posting.description
 
@@ -268,9 +274,9 @@ def lambda_handler(event, context):
                 session=session,
                 job_id=job_id,
                 user_id=user_id,
-                name=parsed_result["name"],
                 upload_key=s3_key,
-                cv_hash=cv_id
+                cv_hash=cv_id,
+                application_source = application_source
             )
 
             # 2. Save the CV analysis result, linked to the JobApplication
