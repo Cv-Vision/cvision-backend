@@ -16,9 +16,11 @@ bucket_name = os.environ.get("BUCKET")
 table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 tasks_table = dynamodb.Table(table_name)
 
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
+
 # CORS headers configuration
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT,DELETE",
     "Access-Control-Allow-Credentials": "true",

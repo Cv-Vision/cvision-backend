@@ -10,9 +10,11 @@ from models import JobPosting, JobApplication
 
 s3 = boto3.client("s3")
 bucket = os.environ["BUCKET"]
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
 
+# CORS headers configuration
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
     "Access-Control-Allow-Methods": "OPTIONS,GET",
     "Access-Control-Allow-Credentials": "true"
