@@ -69,6 +69,14 @@ jobs:
       - name: Update Lambda function configuration
         run: |
           LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+
+          if [ "${GITHUB_REF}" = "refs/heads/master" ]; then
+            ORIGIN="${{ secrets.ALLOWED_ORIGIN_PROD }}"
+          else
+            ORIGIN="${{ secrets.ALLOWED_ORIGIN_DEV }}"
+          fi
+
           aws lambda update-function-configuration \
             --function-name create_job_description \
             --layers $LAYER_ARN
+            --environment "Variables={ALLOWED_ORIGIN=$ORIGIN}"

@@ -6,10 +6,11 @@ from sqlalchemy import and_
 # Import ORM session handler and models
 from db_handler import get_session
 from models import JobApplication, JobPosting
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
 
-# CORS headers
+# CORS headers configuration
 CORS_HEADERS = {
-    "Access-Control-Allow-Origin": "http://localhost:3000",
+    "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
     "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
     "Access-Control-Allow-Methods": "OPTIONS,GET,POST,PUT",
     "Access-Control-Allow-Credentials": "true",
