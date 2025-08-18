@@ -41,7 +41,7 @@ def lambda_handler(event, context):
 
     try:
         print("🔍 Event:", event)
-        job_id = event.get("pathParameters", {}).get("job_id")
+        job_id = event.get("pathParameters", {}).get("job-id")
         if not job_id:
             return {
                 "statusCode": 400,
@@ -156,6 +156,7 @@ def lambda_handler(event, context):
             "title": job_posting.title,
             "description": job_posting.description,
             "location": job_posting.location,
+            "company": job_posting.company,
             "experience_level": job_posting.experience_level,
             "english_level": job_posting.english_level,
             "contract_type": job_posting.contract_type,
