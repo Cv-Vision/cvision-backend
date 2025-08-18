@@ -10,7 +10,7 @@ sqs = boto3.client("sqs")
 # --- Configuration ---
 BATCH_SIZE = 10  # Max number of messages to send per invocation
 
-def handler(event, context):
+def lambda_handler(event, context):
     """
     This function is triggered by an EventBridge Schedule. It queries a GSI on the
     DynamoDB table to find tasks with a 'PENDING' status, sends them as messages
