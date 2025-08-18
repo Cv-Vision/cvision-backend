@@ -35,7 +35,8 @@ class JobPosting(Base):
     posting_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Foreign key to the 'users' table
-    created_by_user_id = Column(String(255), ForeignKey('users.user_id', ondelete='CASCADE'), nullable=False)
+    created_by_user_id = Column(String(255), ForeignKey('users.user_id', ondelete='CASCADE'),
+                                nullable=False, index=True)
 
     title = Column(String(255), nullable=False)
     company = Column(String(255), nullable=False)

@@ -69,8 +69,6 @@ CREATE TABLE IF NOT EXISTS job_applications (
       ON DELETE CASCADE
 );
 
--- Index to improve lookup performance by CV hash.
-CREATE INDEX IF NOT EXISTS idx_job_applications_cv_hash ON job_applications (cv_hash);
 
 -- -----------------------------------------------------------
 -- Table: cv_analysis_results
@@ -90,3 +88,33 @@ CREATE TABLE IF NOT EXISTS cv_analysis_results (
       REFERENCES job_applications (application_id)
       ON DELETE CASCADE
 );
+
+-- -----------------------------------------------------------
+-- PERFORMANCE INDEXES
+--
+-- These indexes improve query performance for common operations.
+-- -----------------------------------------------------------
+
+-- Index to improve lookup performance by CV hash.
+CREATE INDEX IF NOT EXISTS idx_job_applications_cv_hash ON job_applications (cv_hash);
+
+-- Index for job postings lookup by creator (most important for get_recruiter_job_postings_handler Lambda)
+CREATE INDEX IF NOT EXISTS idx_job_postings_created_by_user_id ON job_postings (created_by_user_id);
+
+-- Index for filtering job postings by status (e.g., only ACTIVE jobs)
+CREATE INDEX IF NOT EXISTS idx_job_postings_status ON job_postings (status);
+
+-- Index for sorting job postings by creation date
+CREATE INDEX IF NOT EXISTS idx_job_postings_created_at ON job_postings (created_at);
+
+-- Index for job applications lookup by user (candidate's applications)
+CREATE INDEX IF NOT EXISTS idx_job_applications_user_id ON job_applications (user_id);
+
+-- Index for job applications lookup by job posting (applications for a specific job)
+CREATE INDEX IF NOT EXISTS idx_job_applications_job_posting_id ON job_applications (job_posting_id);
+
+-- Composite index for filtering applications by job and user (avoid duplicates)
+CREATE INDEX IF NOT EXISTS idx_job_applications_job_user ON job_applications (job_posting_id, user_id);
+
+-- Index for CV analysis results lookup by job application
+CREATE INDEX IF NOT EXISTS idx_cv_analysis_job_application_id ON cv_analysis_results (job_application_id);
