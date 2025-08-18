@@ -13,8 +13,7 @@ on:
       - dev
     paths:
       - 'orm_layer/**'
-  
-  # Allows to run the action manually from the GitHub UI.
+
   workflow_dispatch:
 
 jobs:
@@ -37,21 +36,29 @@ jobs:
           aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
-      # Step 4: Install dependencies and package the layer.
       - name: Package Lambda Layer
         run: |
-          echo "Installing dependencies into the layer folder..."
-          pip install SQLAlchemy pg8000 -t ./orm_layer/python/
-          echo "Creating zip file..."
-          cd orm_layer
-          zip -r orm_layer.zip ./python
+          # Set up the Python directory for the layer
+          LAYER_PYTHON_DIR="./orm_layer/python"
+          mkdir -p $LAYER_PYTHON_DIR
 
-      # Step 5: Deploy the zip file to AWS Lambda.
+          echo "Installing dependencies into the layer folder..."  
+          pip install SQLAlchemy psycopg2-binary -t $LAYER_PYTHON_DIR
+          
+          echo "Copying local code to the layer folder..."
+          cp ./orm_layer/db_handler.py $LAYER_PYTHON_DIR/
+          cp ./orm_layer/enums.py $LAYER_PYTHON_DIR/
+          cp ./orm_layer/models.py $LAYER_PYTHON_DIR/
+
+          echo "Creating zip file..."  
+          cd orm_layer  
+          zip -r orm_layer.zip python/  
+
       - name: Deploy Layer to AWS
-        run: |
-          aws lambda publish-layer-version \
-            --layer-name orm-layer \
-            --description "A new version of the ORM layer deployed via GitHub Actions" \
-            --zip-file fileb://orm_layer/orm_layer.zip \
-            --compatible-runtimes python3.13 \
+        run: |  
+          aws lambda publish-layer-version \  
+            --layer-name orm-layer \  
+            --description "A new version of the ORM layer deployed via GitHub Actions" \  
+            --zip-file fileb://orm_layer/orm_layer.zip \  
+            --compatible-runtimes python3.13 \  
             --region us-east-2
