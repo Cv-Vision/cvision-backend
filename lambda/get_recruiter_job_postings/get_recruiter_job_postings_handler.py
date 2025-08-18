@@ -47,29 +47,41 @@ def lambda_handler(event, context):
             JobPosting.created_by_user_id == user_id
         ).all()
 
+        print(f"✅ Query completed. Found {len(job_postings)} job postings")
+
         # Format the results to return as JSON
         items = []
-        for job in job_postings:
-            items.append({
-                "posting_id": str(job.posting_id),
-                "created_by_user_id": job.created_by_user_id,
-                "title": job.title,
-                "company": job.company,
-                "description": job.description,
-                "location": job.location,
-                "experience_level": job.experience_level.value if job.experience_level else None,
-                "english_level": job.english_level.value if job.english_level else None,
-                "contract_type": job.contract_type.value if job.contract_type else None,
-                "industry_experience": job.industry_experience,
-                "additional_requirements": job.additional_requirements,
-                "status": job.status.value if job.status else None,
-                "created_at": job.created_at.isoformat() if job.created_at else None
-            })
+        print("🔍 Starting to format results...")
+
+        for i, job in enumerate(job_postings):
+            print(f"🔍 Processing job {i + 1}: {job.title if hasattr(job, 'title') else 'No title'}")
+            try:
+                job_dict = {
+                    "posting_id": str(job.posting_id),
+                    "created_by_user_id": job.created_by_user_id,
+                    "title": job.title,
+                    "company": job.company,
+                    "description": job.description,
+                    "location": job.location,
+                    "experience_level": job.experience_level.value if job.experience_level else None,
+                    "english_level": job.english_level.value if job.english_level else None,
+                    "contract_type": job.contract_type.value if job.contract_type else None,
+                    "industry_experience": job.industry_experience,
+                    "additional_requirements": job.additional_requirements,
+                    "status": job.status.value if job.status else None,
+                    "created_at": job.created_at.isoformat() if job.created_at else None
+                }
+                items.append(job_dict)
+                print(f"✅ Job {i + 1} processed successfully")
+            except Exception as job_error:
+                print(f"❌ Error processing job {i + 1}: {str(job_error)}")
+                raise job_error
 
         print("jobs found:", len(items))
         print("items found:", items)
+        print("🔍 About to return response...")
 
-        return {
+        response = {
             "statusCode": 200,
             "body": json.dumps(items),
             "headers": {
@@ -77,6 +89,9 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json"
             },
         }
+
+        print("✅ Response created successfully")
+        return response
 
     except Exception as e:
         print(f"Error in get_recruiter_job_postings: {str(e)}")
