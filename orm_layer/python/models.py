@@ -5,7 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 
-from orm_layer.python.enums import UserType, ExperienceLevel, EnglishLevel, ContractType, JobStatus
+from enums import UserType, ExperienceLevel, EnglishLevel, ContractType, JobStatus
 
 # This is the base class from which all our models will inherit.
 # It allows SQLAlchemy to map the classes to the database tables.

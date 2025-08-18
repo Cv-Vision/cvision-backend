@@ -14,6 +14,7 @@ on:
     paths:
       - 'orm_layer/**'
 
+  # Allows to run the action manually from the GitHub UI.
   workflow_dispatch:
 
 jobs:
@@ -36,32 +37,21 @@ jobs:
           aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
 
+      # Step 4: Install dependencies and package the layer.
       - name: Package Lambda Layer
         run: |
-          # Set up the Python directory for the layer
-          LAYER_PYTHON_DIR="./orm_layer/python"
-          mkdir -p $LAYER_PYTHON_DIR
+          echo "Installing dependencies into the layer folder..."
+          pip install SQLAlchemy pg8000 -t ./orm_layer/python/
+          echo "Creating zip file..."
+          cd orm_layer
+          zip -r orm_layer.zip ./python
 
-          echo "Installing dependencies into the layer folder..."  
-          pip install SQLAlchemy psycopg2-binary -t $LAYER_PYTHON_DIR
-
-          echo "Copying local code to the layer folder..."
-          # Corrected paths to copy your code files into the 'python' folder
-          cp ./orm_layer/python/db_handler.py $LAYER_PYTHON_DIR/
-          cp ./orm_layer/python/enums.py $LAYER_PYTHON_DIR/
-          cp ./orm_layer/python/models.py $LAYER_PYTHON_DIR/
-          # Copying the sql folder is not necessary for the layer's runtime
-
-          echo "Creating zip file..."  
-          cd orm_layer  
-          # The zip file now contains both dependencies and your code
-          zip -r orm_layer.zip python/
-
+      # Step 5: Deploy the zip file to AWS Lambda.
       - name: Deploy Layer to AWS
-        run: |  
-          aws lambda publish-layer-version \  
-            --layer-name orm-layer \  
-            --description "A new version of the ORM layer deployed via GitHub Actions" \  
-            --zip-file fileb://orm_layer/orm_layer.zip \  
-            --compatible-runtimes python3.13 \  
+        run: |
+          aws lambda publish-layer-version \
+            --layer-name orm-layer \
+            --description "A new version of the ORM layer deployed via GitHub Actions" \
+            --zip-file fileb://orm_layer/orm_layer.zip \
+            --compatible-runtimes python3.13 \
             --region us-east-2
