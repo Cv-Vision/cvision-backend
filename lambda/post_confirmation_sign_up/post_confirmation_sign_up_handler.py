@@ -39,6 +39,9 @@ def lambda_handler(event, context):
     session = None
     try:
         session = get_session()
+        if session is None:
+            raise Exception("Failed to establish database session")
+
         existing_user = session.query(User).filter(User.user_id == user_id).first()
         if not existing_user:
             new_user = User(
@@ -50,10 +53,25 @@ def lambda_handler(event, context):
             session.commit()
             print(f'Registro en DB creado para usuario {user_name}')
     except Exception as e:
-        session.rollback()
+        if session is not None:
+            session.rollback()
         print(f'Error creando usuario en DB: {e}')
-        raise e
+
+        # Rollback Cognito group assignment since DB creation failed
+        if group_name:
+            try:
+                client.admin_remove_user_from_group(
+                    UserPoolId=user_pool_id,
+                    Username=user_name,
+                    GroupName=group_name
+                )
+                print(f'Rollback: Usuario {user_name} removido del grupo {group_name}')
+            except Exception as rollback_error:
+                print(f'Error en rollback de Cognito: {rollback_error}')
+
+        raise e  # Re-raise to fail the entire PostConfirmation process
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
     return event
