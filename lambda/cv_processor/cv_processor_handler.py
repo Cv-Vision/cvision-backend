@@ -20,7 +20,7 @@ s3 = boto3.client("s3")
 
 bucket = os.environ["BUCKET"]
 
-def save_or_update_job_application(session, job_id, user_id, name, score, upload_key, cv_hash):
+def save_or_update_job_application(session, job_id, user_id, name, upload_key, cv_hash):
     """
     Saves or updates a JobApplication entry using the ORM.
     """
@@ -34,7 +34,6 @@ def save_or_update_job_application(session, job_id, user_id, name, score, upload
             print(f"🔄 Existing JobApplication found for hash {cv_hash}. Updating...")
             existing_application.name = name
             existing_application.cv_upload_key = upload_key
-            existing_application.score = score
             session.add(existing_application)
             return existing_application
         else:
@@ -44,7 +43,6 @@ def save_or_update_job_application(session, job_id, user_id, name, score, upload
                 user_id=user_id,
                 cv_upload_key=upload_key,
                 cv_hash=cv_hash,
-                score=score,
                 name=name
             )
             session.add(new_application)
@@ -236,7 +234,6 @@ def lambda_handler(event, context):
             job_id=job_id,
             user_id=user_id,
             name=parsed_result["name"],
-            score=parsed_result["score"],
             upload_key=cv_key,
             cv_hash=cv_id
         )
