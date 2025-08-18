@@ -5,7 +5,7 @@ import time
 from botocore.exceptions import ClientError
 from db_handler import get_session
 from models import JobPosting
-from sqlalchemy import NoResultFound
+from sqlalchemy.orm.exc import NoResultFound
 
 # --- Boto3 Clients ---
 s3 = boto3.client("s3")
