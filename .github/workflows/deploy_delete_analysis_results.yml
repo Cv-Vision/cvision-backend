@@ -1,55 +1,74 @@
-name: Deploy to AWS Lambda - delete-analysis-results
+name: Deploy to AWS Lambda - delete_analysis_results
 
 on:
   push:
     branches:
       - master
       - dev
+    paths:
+      - 'lambda/delete_analysis_results/**'
   pull_request:
     branches:
       - master
       - dev
+    paths:
+      - 'lambda/delete_analysis_results/**'
 
 jobs:
   deploy:
-    name: delete-analysis-results_handler
+    name: deploy_delete_analysis_results
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies and package Lambda for delete-analysis-results_handler
-        run: |
-          cd lambda/delete_analysis_results
-          pip install -r requirements.txt -t python  
-          cp delete-analysis-results_handler.py python/ 
-          cd python
-          zip -r ../../../delete-analysis-results_handler_lambda.zip .
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
+
+      # Step 1: Get the latest published version of the 'orm-layer'
+      - name: Get latest layer version
+        id: get_layer
+        run: |
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name orm-layer \
+            --query "LayerVersions[0].Version" \
+            --output text)
+
+          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+
+      # Step 2: Package the lambda handler's code only
+      - name: Package Lambda
+        run: |
+          # Go to the lambda function directory
+          cd lambda/delete_analysis_results
+          zip -r ../../delete_analysis_results_handler_lambda.zip delete_analysis_results_handler.py
 
       - name: "Debug: Current directory and files"
         run: |
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify delete-analysis-results_handler_lambda.zip exists
-        run: |
-          if [ ! -f $(pwd)/delete-analysis-results_handler_lambda.zip ]; then echo "delete-analysis-results_handler_lambda.zip does not exist"; exit 1; fi
-
-      - name: Deploy delete-analysis-results to AWS Lambda
+      # Step 3: Update the Lambda function's code
+      - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
             --function-name delete_analysis_results \
-            --zip-file fileb://$(pwd)/delete-analysis-results_handler_lambda.zip
+            --zip-file fileb://delete_analysis_results_handler_lambda.zip
+
+      - name: Wait for function update to complete
+        run: |
+          aws lambda wait function-updated \
+          --function-name delete_analysis_results
+
+      # Step 4: Update the Lambda function's configuration to use the latest layer
+      - name: Update Lambda function configuration
+        run: |
+          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          aws lambda update-function-configuration \
+            --function-name delete_analysis_results \
+            --layers $LAYER_ARN

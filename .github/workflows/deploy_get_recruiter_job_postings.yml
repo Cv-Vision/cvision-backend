@@ -1,55 +1,74 @@
-name: Deploy to AWS Lambda - get-recruiter-job-postings
+name: Deploy to AWS Lambda - get_recruiter_job_postings
 
 on:
   push:
     branches:
       - master
       - dev
+    paths:
+      - 'lambda/get_recruiter_job_postings/**'
   pull_request:
     branches:
       - master
       - dev
+    paths:
+      - 'lambda/get_recruiter_job_postings/**'
 
 jobs:
   deploy:
-    name: get-recruiter-job-postings_handler
+    name: deploy_get_recruiter_job_postings
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.13'
-
-      - name: Install dependencies and package Lambda for get-recruiter-job-postings_handler
-        run: |
-          cd lambda/get_recruiter_job_postings
-          pip install -r requirements.txt -t python  
-          cp get-recruiter-job-postings_handler.py python/ 
-          cd python
-          zip -r ../../../get-recruiter-job-postings_handler_lambda.zip .
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-2
+
+      # Step 1: Get the latest published version of the 'orm-layer'
+      - name: Get latest layer version
+        id: get_layer
+        run: |
+          LAYER_VERSION=$(aws lambda list-layer-versions \
+            --layer-name orm-layer \
+            --query "LayerVersions[0].Version" \
+            --output text)
+
+          echo "LAYER_VERSION=$LAYER_VERSION" >> $GITHUB_ENV
+
+      # Step 2: Package the lambda handler's code only
+      - name: Package Lambda
+        run: |
+          # Go to the lambda function directory
+          cd lambda/get_recruiter_job_postings
+          zip -r ../../get_recruiter_job_postings_handler_lambda.zip get_recruiter_job_postings_handler.py
 
       - name: "Debug: Current directory and files"
         run: |
           echo "Current directory: $(pwd)"
           ls -l
 
-      - name: Verify get-recruiter-job-postings_handler_lambda.zip exists
-        run: |
-          if [ ! -f $(pwd)/get-recruiter-job-postings_handler_lambda.zip ]; then echo "get-recruiter-job-postings_handler_lambda.zip does not exist"; exit 1; fi
-
-      - name: Deploy get-recruiter-job-postings to AWS Lambda
+      # Step 3: Update the Lambda function's code
+      - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
             --function-name get_recruiter_job_postings \
-            --zip-file fileb://$(pwd)/get-recruiter-job-postings_handler_lambda.zip
+            --zip-file fileb://get_recruiter_job_postings_handler_lambda.zip
+
+      - name: Wait for function update to complete
+        run: |
+          aws lambda wait function-updated \
+          --function-name get_recruiter_job_postings
+
+      # Step 4: Update the Lambda function's configuration to use the latest layer
+      - name: Update Lambda function configuration
+        run: |
+          LAYER_ARN="arn:aws:lambda:us-east-2:${{ secrets.NEW_AWS_ACCOUNT_ID }}:layer:orm-layer:${{ env.LAYER_VERSION }}"
+          aws lambda update-function-configuration \
+            --function-name get_recruiter_job_postings \
+            --layers $LAYER_ARN
