@@ -15,7 +15,7 @@ CORS_HEADERS = {
     "Access-Control-Max-Age": "86400"  # 24 hours
 }
 
-def create_job_posting_handler(event, context):
+def lambda_handler(event, context):
     # Get a database session from the connection layer
     session = get_session()
 
