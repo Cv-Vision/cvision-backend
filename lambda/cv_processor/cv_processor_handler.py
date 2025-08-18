@@ -311,9 +311,5 @@ def lambda_handler(event, context):
 
     return {
         "statusCode": 200,
-        "body": json.dumps({
-            "message": "Evaluación completada",
-            "result_s3_path": f"s3://{bucket}/{output_key}",
-            "recruiter_id": user_id
-        })
+        "body": json.dumps("Batch processed successfully.")
     }
