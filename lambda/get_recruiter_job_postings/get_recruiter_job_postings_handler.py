@@ -27,10 +27,15 @@ def lambda_handler(event, context):
         }
 
     # Get a database session
-    session = get_session()
-
+    session = None
     try:
+        session = get_session()
+        if session is None:
+            raise Exception("Failed to establish database session")
+
         print("🔍 Event:", event)
+        print("🔍 User ID:", user_id)
+
         # Query all job postings for the user
         job_postings = session.query(JobPosting).filter(
             JobPosting.created_by_user_id == user_id
@@ -46,14 +51,15 @@ def lambda_handler(event, context):
                 "company": job.company,
                 "description": job.description,
                 "location": job.location,
-                "experience_level": job.experience_level,
-                "english_level": job.english_level,
-                "contract_type": job.contract_type,
+                "experience_level": job.experience_level.value if job.experience_level else None,
+                "english_level": job.english_level.value if job.english_level else None,
+                "contract_type": job.contract_type.value if job.contract_type else None,
                 "industry_experience": job.industry_experience,
                 "additional_requirements": job.additional_requirements,
-                "status": job.status,
+                "status": job.status.value if job.status else None,
                 "created_at": job.created_at.isoformat() if job.created_at else None
             })
+
         print("jobs found:", len(items))
         print("items found:", items)
 
@@ -65,11 +71,16 @@ def lambda_handler(event, context):
                 "Content-Type": "application/json"
             },
         }
+
     except Exception as e:
-        session.rollback()
+        print(f"Error in get_recruiter_job_postings: {str(e)}")
+        if session is not None:
+            session.rollback()
         return {
             "statusCode": 500,
+            "headers": CORS_HEADERS,
             "body": json.dumps({"error": str(e)}),
         }
     finally:
-        session.close()
+        if session is not None:
+            session.close()
