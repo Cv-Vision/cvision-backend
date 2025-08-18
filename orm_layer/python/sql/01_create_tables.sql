@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS job_applications (
 CREATE TABLE IF NOT EXISTS cv_analysis_results (
     analysis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     job_application_id UUID NOT NULL,
+    s3_key VARCHAR(1024),
     analysis_data JSONB,
     generated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 

@@ -94,6 +94,7 @@ class CVAnalysisResult(Base):
                                 nullable=False)
     analysis_data = Column(JSON)
     generated_at = Column(DateTime(timezone=True), server_default=func.now())
+    s3_key = Column(String(1024))
 
     # --- Relationships ---
     job_application = relationship("JobApplication", back_populates="analysis_result")
