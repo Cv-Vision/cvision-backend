@@ -78,5 +78,5 @@ jobs:
 
           aws lambda update-function-configuration \
             --function-name get_recruiter_job_postings \
-            --layers $LAYER_ARN
+            --layers $LAYER_ARN \
             --environment "Variables={ALLOWED_ORIGIN=$ORIGIN}"

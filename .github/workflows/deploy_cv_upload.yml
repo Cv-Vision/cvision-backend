@@ -78,5 +78,5 @@ jobs:
 
           aws lambda update-function-configuration \
             --function-name cv_upload \
-            --layers $LAYER_ARN
+            --layers $LAYER_ARN \
             --environment "Variables={ALLOWED_ORIGIN=$ORIGIN}"
