@@ -12,7 +12,6 @@ sqs = boto3.client("sqs")
 
 # --- Environment Variables ---
 bucket_name = os.environ.get("BUCKET")
-table_name = os.environ.get("DYNAMODB_TABLE_NAME")
 sqs_queue_url = os.environ.get("SQS_QUEUE_URL")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
 
