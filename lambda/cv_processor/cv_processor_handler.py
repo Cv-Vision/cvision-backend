@@ -18,46 +18,11 @@ from enums import UserType
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
+# --- Boto3 Clients ---
 s3 = boto3.client("s3")
-dynamodb = boto3.resource("dynamodb")
-tasks_table = dynamodb.Table(os.environ.get("DYNAMODB_TABLE_NAME"))
 
-# --- Configuration ---
-RETENTION_DAYS = 30  # How long to keep task records in DynamoDB before they are auto-deleted
-
+# --- Environment Variables ---
 bucket = os.environ["BUCKET"]
-
-
-def update_dynamodb_status(job_id, s3_key, status, result=None, error_message=None):
-    """
-    Updates the task's status in the DynamoDB orchestration table.
-    This also sets a TTL for automatic cleanup.
-    """
-    ttl_timestamp = int(time.time()) + (RETENTION_DAYS * 24 * 60 * 60)
-    try:
-        update_expression = "set #s = :s, #ttl = :ttl"
-        expr_attr_names = {"#s": "status", "#ttl": "ttl_expiry"}
-        expr_attr_values = {":s": status, ":ttl": ttl_timestamp}
-
-        if result:
-            update_expression += ", #res = :res"
-            expr_attr_names["#res"] = "processing_result"
-            expr_attr_values[":res"] = result
-
-        if error_message:
-            update_expression += ", #err = :err"
-            expr_attr_names["#err"] = "error_message"
-            expr_attr_values[":err"] = error_message
-
-        tasks_table.update_item(
-            Key={"job_id": job_id, "s3_key": s3_key},
-            UpdateExpression=update_expression,
-            ExpressionAttributeNames=expr_attr_names,
-            ExpressionAttributeValues=expr_attr_values
-        )
-        print(f"✅ Updated DynamoDB status to '{status}' for {s3_key}")
-    except Exception as e:
-        print(f"❌ Failed to update DynamoDB status for {s3_key}: {e}")
 
 def save_or_update_job_application(session, job_id, user_id, application_source, upload_key, cv_hash):
     """
@@ -116,7 +81,7 @@ def image_file_to_bytes(image_bytes):
 def lambda_handler(event, context):
     """
     This function is triggered by SQS. It processes each CV analysis task from the queue,
-    calls the Gemini API, saves results to PostgreSQL, and updates the task status in DynamoDB.
+    calls the Gemini API, and saves results to PostgreSQL.
     """
 
     for record in event['Records']:
@@ -151,9 +116,7 @@ def lambda_handler(event, context):
 
             if existing_result:
                 print("Result already exists. Skipping analysis.")
-                # Update DynamoDB status to COMPLETED
-                update_dynamodb_status(job_id, s3_key, "COMPLETED")
-                continue  # Continuar con el siguiente mensaje
+                continue
 
             # Convert to PNG image
             ext = s3_key.lower().split('.')[-1]
@@ -295,19 +258,19 @@ def lambda_handler(event, context):
             session.commit()
             print("✅ Analysis and application data saved to PostgreSQL")
 
-            # Update DynamoDB status to COMPLETED
-            update_dynamodb_status(job_id, s3_key, "COMPLETED")
-
         except Exception as e:
             print("❌ Error:", str(e))
             # Rollback the session in case of any error
-            session.rollback()
-            # Update DynamoDB status to FAILED
-            if job_id and s3_key:
-                update_dynamodb_status(job_id, s3_key, "FAILED", error_message=str(e))
+            if session:
+                session.rollback()
+            # Relaunch the exception so SQS knows the message failed
+            # and can retry it o send it to DLQ queue
+            raise e
+
         finally:
             # Close the database session to clean up resources
-            session.close()
+            if session:
+                session.close()
 
     return {
         "statusCode": 200,
