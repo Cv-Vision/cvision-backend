@@ -1,7 +1,6 @@
 import json
 import boto3
 import os
-import time
 from botocore.exceptions import ClientError
 from db_handler import get_session
 from models import JobPosting
@@ -9,13 +8,12 @@ from sqlalchemy.orm.exc import NoResultFound
 
 # --- Boto3 Clients ---
 s3 = boto3.client("s3")
-dynamodb = boto3.resource("dynamodb")
+sqs = boto3.client("sqs")
 
 # --- Environment Variables ---
 bucket_name = os.environ.get("BUCKET")
 table_name = os.environ.get("DYNAMODB_TABLE_NAME")
-tasks_table = dynamodb.Table(table_name)
-
+sqs_queue_url = os.environ.get("SQS_QUEUE_URL")
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
 
 # CORS headers configuration
@@ -108,26 +106,26 @@ def lambda_handler(event, context):
             "body": json.dumps({"message": "Failed to list files from storage."}),
         }
 
-    # --- Create tasks in DynamoDB using Batch Writer for efficiency ---
+    # --- Send tasks to SQS ---
     try:
-        with tasks_table.batch_writer() as batch:
-            for cv_key in cv_files:
-                batch.put_item(
-                    Item={
-                        "job_id": job_id,
-                        "s3_key": cv_key,
-                        "status": "PENDING",
-                        "created_by": user_id,
-                        "created_at": int(time.time()),
-                    }
-                )
-        print(f"Successfully created {len(cv_files)} tasks in DynamoDB for job_id {job_id}.")
+        messages_sent_count = 0
+        for cv_key in cv_files:
+            message_body = {
+                "job_id": job_id,
+                "s3_key": cv_key,
+            }
+            sqs.send_message(
+                QueueUrl=sqs_queue_url,
+                MessageBody=json.dumps(message_body)
+            )
+            messages_sent_count += 1
+        print(f"Successfully sent {messages_sent_count} messages to SQS for job_id {job_id}.")
     except ClientError as e:
-        print(f"Error writing to DynamoDB: {e}")
+        print(f"Error sending messages to SQS: {e}")
         return {
             "statusCode": 500,
             "headers": CORS_HEADERS,
-            "body": json.dumps({"message": "Failed to create processing tasks."}),
+            "body": json.dumps({"message": "Failed to queue processing tasks."}),
         }
 
     # --- Respond to the client immediately ---
@@ -135,7 +133,7 @@ def lambda_handler(event, context):
         "statusCode": 202,  # The request has been accepted for processing
         "headers": CORS_HEADERS,
         "body": json.dumps({
-            "message": "Processing job has been accepted and queued.",
+            "message": "All CVs have been queued for immediate processing.",
             "job_id": job_id,
             "files_to_process": len(cv_files),
         }),
